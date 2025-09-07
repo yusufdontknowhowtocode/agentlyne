@@ -38,29 +38,36 @@ app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 const DB_URL = process.env.DATABASE_URL;
 
 let pool;
-if (DB_URL) {
-  try {
-    const u = new URL(DB_URL);
-    const host = u.hostname;
-    const port = Number(u.port || 5432);
-    const user = decodeURIComponent(u.username || '');
-    const password = decodeURIComponent(u.password || '');
-    const database = (u.pathname || '/').replace(/^\//, '');
-    const sslRequired =
-      u.searchParams.get('sslmode') === 'require' || process.env.PGSSLMODE === 'require';
 
+async function initDbPool() {
+  if (!DB_URL) {
+    pool = new Pool();
+    return;
+  }
+
+  const u = new URL(DB_URL);
+  const host = u.hostname;
+  const port = Number(u.port || 5432);
+  const user = decodeURIComponent(u.username || '');
+  const password = decodeURIComponent(u.password || '');
+  const database = (u.pathname || '/').replace(/^\//, '');
+  const sslRequired =
+    u.searchParams.get('sslmode') === 'require' || process.env.PGSSLMODE === 'require';
+
+  try {
     // Resolve DB host to an IPv4 address explicitly
     const { address } = await dnsPromises.lookup(host, { family: 4 });
     pool = new Pool({
-      host: address,
+      host: address,      // IPv4 literal, avoids IPv6
       port,
       user,
       password,
       database,
-      ssl: sslRequired ? { rejectUnauthorized: false } : undefined,
+      // Keep TLS, but set SNI to original hostname so certs still match
+      ssl: sslRequired ? { rejectUnauthorized: false, servername: host } : undefined,
       keepAlive: true,
     });
-    console.log('DB configured for IPv4 at', address);
+    console.log('DB configured for IPv4 at', address, ' (SNI:', host, ')');
   } catch (err) {
     console.warn('DB IPv4 resolve failed, falling back to connectionString:', err?.message);
     pool = new Pool({
@@ -69,8 +76,6 @@ if (DB_URL) {
       keepAlive: true,
     });
   }
-} else {
-  pool = new Pool();
 }
 
 async function ensureSchema() {
@@ -91,10 +96,14 @@ async function ensureSchema() {
     await pool.query(sql);
     console.log('DB schema ready');
   } catch (err) {
-    console.warn('DB not reachable yet; continuing. Detail:', err?.message);
+    console.error('book db ensure failed:', err?.message);
   }
 }
-ensureSchema();
+
+// init pool and then ensure schema
+initDbPool()
+  .then(ensureSchema)
+  .catch(err => console.error('DB init failed:', err?.message));
 
 /* ------------------------------------------------------------------ */
 /* Email (SMTP)                                                       */
@@ -138,6 +147,7 @@ function pick(obj, keys, def = '') {
 /* ------------------------------------------------------------------ */
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
+// SMTP connectivity test
 app.get('/api/email-verify', async (_req, res) => {
   try {
     await transporter.verify();
@@ -148,6 +158,7 @@ app.get('/api/email-verify', async (_req, res) => {
   }
 });
 
+// Send a one-off test email
 app.get('/api/email-test', async (req, res) => {
   try {
     const to = clean(req.query.to || SALES_EMAIL || FROM_EMAIL);
@@ -165,6 +176,7 @@ app.get('/api/email-test', async (req, res) => {
   }
 });
 
+// DB connectivity smoke test
 app.get('/api/db-test', async (_req, res) => {
   try {
     const r = await pool.query('select now()');
@@ -175,6 +187,7 @@ app.get('/api/db-test', async (_req, res) => {
   }
 });
 
+// Quick slot suggester
 app.get('/api/slots', (req, res) => {
   const { date } = req.query;
   const base = date ? new Date(`${date}T09:00:00`) : new Date();
@@ -186,10 +199,12 @@ app.get('/api/slots', (req, res) => {
   res.json({ slots });
 });
 
+// Booking endpoint (auto-reply + internal notification)
 app.post('/api/book', async (req, res) => {
   try {
     const b = req.body || {};
 
+    // Accept multiple possible field names from form/JS
     const fullName = clean(pick(b, ['fullName', 'full_name', 'name']));
     const email    = clean(pick(b, ['email', 'mail']));
     const phone    = clean(pick(b, ['phone', 'tel', 'telephone']));
