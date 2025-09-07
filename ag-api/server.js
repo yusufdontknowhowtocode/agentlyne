@@ -6,6 +6,20 @@ import express from 'express';
 import cors from 'cors';
 import nodemailer from 'nodemailer';
 import { Pool } from 'pg';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// resolve __dirname in ESM
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// Serve static site
+app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
+
+// (optional) SPA-style fallback for unknown routes to index.html
+// If you have only static pages like /book.html, this is not required.
+// If you want any unknown path to show the homepage, uncomment:
+// app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
 const app = express();
 
