@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Book — Agentlyne</title>
+  <meta name="theme-color" content="#00b8a9" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/config.js"></script>
+  <style>
+    :root{ --brand-500:#00e0d8; --brand-600:#00b8a9; }
+    body{ background:#f7f8ff }
+    .card{ background:#fff;border:1px solid rgba(2,8,23,.08);border-radius:20px;box-shadow:0 12px 32px rgba(2,8,23,.06) }
+    .ring-brand{ box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--brand-500) 35%, transparent) }
+    .btn{ display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:9999px;padding:.75rem 1.25rem;font-weight:700;transition:transform .15s, box-shadow .15s }
+    .btn-primary{ color:#fff;background:linear-gradient(135deg,var(--brand-500),var(--brand-600));box-shadow:0 10px 28px color-mix(in oklab, var(--brand-600) 28%, transparent) }
+    .btn-primary:hover{ transform:translateY(-2px); box-shadow:0 14px 34px color-mix(in oklab, var(--brand-600) 34%, transparent) }
+    .btn-ghost{ border:2px solid rgba(2,8,23,.12); background:#fff; color:#0f172a }
+    .hint{ color:#64748b }
+    .chip{ display:inline-flex; align-items:center; gap:.5rem; padding:.35rem .7rem; border-radius:9999px; background:#fff; border:1px solid rgba(2,8,23,.12); color:#0f172a; font-weight:800 }
+  </style>
+</head>
+<body class="text-slate-900">
+  <div class="max-w-4xl mx-auto px-6 py-10">
+    <header class="mb-8">
+      <a href="pricing.html" class="text-slate-500 hover:text-slate-700">&larr; Back to Pricing</a>
+      <h1 id="pageTitle" class="mt-2 text-4xl font-extrabold tracking-tight">Talk to sales</h1>
+      <p id="pageSub" class="mt-2 hint">Tell us a bit about your business and pick a time.</p>
+      <p class="mt-3">
+        <span class="chip">Plan: <span id="chipPlan" class="font-extrabold">Inbound</span></span>
+        <span class="chip">Tier: <span id="chipTier" class="font-extrabold">Starter</span></span>
+      </p>
+    </header>
+
+    <div class="grid lg:grid-cols-5 gap-6 items-start">
+      <!-- Sales form (always visible) -->
+      <form id="bookForm" class="card p-5 lg:col-span-3">
+        <h2 class="text-xl font-extrabold mb-3">Book a call</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label class="block">
+            <span class="text-sm font-semibold">Full name</span>
+            <input name="name" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold">Email</span>
+            <input name="email" type="email" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold">Phone</span>
+            <input name="phone" class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold">Company</span>
+            <input name="company" class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+          </label>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+          <label class="block">
+            <span class="text-sm font-semibold">Date</span>
+            <input name="date" type="date" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold">Time</span>
+            <input name="time" type="time" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold">Time zone</span>
+            <select name="timezone" id="tz" class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none"></select>
+          </label>
+        </div>
+
+        <div class="mt-4">
+          <label class="block">
+            <span class="text-sm font-semibold">Notes</span>
+            <textarea name="notes" rows="4" class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" placeholder="Anything helpful (goals, tools, volume, etc.)"></textarea>
+          </label>
+        </div>
+
+        <!-- Hidden context for CRM -->
+        <input type="hidden" name="plan"  id="fPlan" />
+        <input type="hidden" name="tier"  id="fTier" />
+        <input type="hidden" name="intent" id="fIntent" />
+        <input type="hidden" name="source" value="pricing" />
+
+        <div class="mt-6 flex flex-wrap gap-3">
+          <button class="btn btn-primary" id="bookBtn" type="submit">Book this time</button>
+          <button class="btn btn-ghost" type="button" id="testSlot">Suggest times</button>
+        </div>
+
+        <p id="msg" class="mt-4 text-sm"></p>
+      </form>
+
+      <!-- Right column -->
+      <aside class="card p-5 lg:col-span-2">
+        <h3 class="text-lg font-bold">What happens next?</h3>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li>• You’ll get a calendar invite by email (.ics attached).</li>
+          <li>• We’ll join via Zoom or Google Meet.</li>
+          <li>• Bring your flow and pain points—we’ll map quick wins.</li>
+        </ul>
+        <div class="mt-6 p-4 rounded-xl bg-slate-50 border border-slate-200">
+          <strong class="block">Need a specific slot?</strong>
+          <span class="hint">Use “Suggest times” and we’ll propose open slots automatically.</span>
+          <div id="slotList" class="mt-3 grid gap-2"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    const APP = window.APP_CONFIG || {};
+    const API_BASE = APP.API_BASE || 'http://127.0.0.1:5050';
+    const SUPPORT  = APP.SUPPORT_EMAIL || '';
+
+    // Read intent
+    const qs = new URLSearchParams(location.search);
+    const PLAN   = (qs.get('plan')  || 'inbound').toLowerCase();
+    const TIER   = (qs.get('tier')  || 'starter').toLowerCase();
+    const INTENT = (qs.get('intent')|| `${PLAN}-${TIER}`);
+
+    // Chips + hidden fields + notes
+    (function init(){
+      const brand = APP.BRAND_NAME || 'Agentlyne';
+      document.title = `Book — ${brand}`;
+
+      document.getElementById('chipPlan').textContent = PLAN[0].toUpperCase()+PLAN.slice(1);
+      document.getElementById('chipTier').textContent = TIER[0].toUpperCase()+TIER.slice(1);
+
+      document.getElementById('fPlan').value   = PLAN;
+      document.getElementById('fTier').value   = TIER;
+      document.getElementById('fIntent').value = INTENT;
+
+      const pretty = INTENT.replace(/[-_]+/g, ' ').replace(/\b\w/g, s => s.toUpperCase());
+      const notes = document.querySelector('textarea[name="notes"]');
+      if (notes && !notes.value.trim()) {
+        notes.value = `Requested: ${pretty}\n\nKey details:\n• Team size / call volume\n• CRMs / tools\n• Hours of coverage\n• Any compliance needs`;
+      }
+
+      // Timezones
+      const tzSelect = document.getElementById('tz');
+      const current = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const zones = (Intl.supportedValuesOf && Intl.supportedValuesOf('timeZone')) || [current];
+      [current, ...zones.filter(z => z !== current)].forEach(z => {
+        const o = document.createElement('option'); o.value = o.textContent = z; tzSelect.appendChild(o);
+      });
+
+      // Persist selection (optional analytics)
+      try{
+        localStorage.setItem('agentlyne_plan', PLAN);
+        localStorage.setItem('agentlyne_tier', TIER);
+        localStorage.setItem('agentlyne_intent', INTENT);
+      }catch{}
+    })();
+
+    // Submit booking
+    document.getElementById('bookForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      const payload = {
+        fullName: fd.get('name')?.trim(),
+        email:    fd.get('email')?.trim(),
+        phone:    fd.get('phone')?.trim(),
+        company:  fd.get('company')?.trim(),
+        date:     fd.get('date'),
+        time:     fd.get('time'),
+        timeZone: fd.get('timezone'),
+        notes:    fd.get('notes')?.trim(),
+        duration: 30,
+        plan:     PLAN,
+        tier:     TIER,
+        intent:   INTENT,
+        source:   'pricing'
+      };
+
+      const msg = document.getElementById('msg');
+      const btn = document.getElementById('bookBtn');
+      msg.textContent = 'Booking…'; msg.className = 'mt-4 text-sm text-slate-600';
+      btn.disabled = true;
+
+      try{
+        const r = await fetch(`${API_BASE}/api/book`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const data = await r.json();
+        if(!r.ok || !data.ok) throw new Error(data.error || 'Failed');
+
+        msg.textContent = 'Booked! Check your email for the invite.';
+        msg.className = 'mt-4 text-sm text-emerald-600';
+        e.currentTarget.reset();
+      }catch(err){
+        console.error(err);
+        msg.textContent = 'Something went wrong. Please try again' + (SUPPORT ? ` or email ${SUPPORT}.` : '.');
+        msg.className = 'mt-4 text-sm text-rose-600';
+      }finally{
+        btn.disabled = false;
+      }
+    });
+
+    // Suggest times
+    document.getElementById('testSlot').addEventListener('click', async ()=>{
+      const tz = document.getElementById('tz').value;
+      const today = new Date().toISOString().slice(0,10);
+      const wrap = document.getElementById('slotList');
+      wrap.innerHTML = '';
+      try{
+        const r = await fetch(`${API_BASE}/api/slots?date=${today}&tz=${encodeURIComponent(tz)}`);
+        const { slots = [] } = await r.json();
+        if (!slots.length){
+          const p = document.createElement('p'); p.className='text-xs text-slate-500';
+          p.textContent='No suggestions for today. Try another date.'; wrap.appendChild(p); return;
+        }
+        slots.forEach(iso=>{
+          const d = new Date(iso);
+          const b = document.createElement('button');
+          b.className='px-3 py-2 rounded-lg border hover:bg-slate-100 text-sm';
+          b.type='button';
+          b.textContent=d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+          b.onclick=()=>{
+            document.querySelector('input[name="date"]').value = d.toISOString().slice(0,10);
+            document.querySelector('input[name="time"]').value = d.toISOString().slice(11,16);
+            document.getElementById('tz').value = tz;
+            wrap.innerHTML = '';
+          };
+          wrap.appendChild(b);
+        });
+      }catch(e){ console.error(e); }
+    });
+  </script>
+</body>
+</html>

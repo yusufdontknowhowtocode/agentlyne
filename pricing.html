@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pricing — Agentlyne</title>
+  <meta name="theme-color" content="#0ea5e9" />
+  <meta name="description" content="Simple, transparent pricing for Agentlyne voice AI reception and outbound agents." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Manrope','ui-sans-serif','system-ui'],
+            display: ['Space Grotesk','Manrope','ui-sans-serif','system-ui']
+          },
+          colors: { brand:{500:'#0ea5e9',600:'#0284c7'} }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body{ background:#f7f8ff }
+    .pill{border:1px solid rgba(2,8,23,.10);background:#fff}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:9999px;padding:.7rem 1.2rem;font-weight:800}
+    .btn-primary{color:#fff;background:linear-gradient(135deg,#0ea5e9,#0284c7)}
+    .btn-outline{border:2px solid rgba(2,8,23,.12);color:#0f172a;background:#fff}
+    .price-font{font-family: var(--tw-font-display,'Space Grotesk'),'Manrope',ui-sans-serif}
+
+    /* Pricing-only components (no collision with global .card) */
+    .pricing .price-card{
+      background:#fff;border:1px solid rgba(2,8,23,.10);border-radius:20px;
+      box-shadow:0 14px 32px rgba(2,8,23,.06);
+      width:100%;max-width:none;margin:0;position:static;transform:none;
+    }
+    .pricing .price-card--wide{ grid-column:1 / -1; }
+    .pricing .grid-two{ display:grid; gap:1.5rem; grid-template-columns:1fr; align-items:start; }
+    @media (min-width:768px){ .pricing .grid-two{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  </style>
+</head>
+<body class="text-slate-900">
+  <header class="sticky top-0 z-30 bg-white/70 backdrop-blur">
+    <div class="wrap px-6">
+      <div class="h-16 mt-4 rounded-full flex items-center justify-between px-4 pill">
+        <a class="flex items-center gap-2" href="index.html">
+          <span class="inline-grid place-items-center h-9 w-9 rounded-full bg-gradient-to-br from-sky-400 to-violet-500">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3l8 4v6c0 4.418-3.582 8-8 8S4 17.418 4 13V7l8-4z" class="fill-white/95"/>
+            </svg>
+          </span>
+          <strong class="text-slate-900">Agentlyne</strong>
+        </a>
+        <nav class="flex items-center gap-2">
+          <a href="book.html" class="btn btn-outline">Book a Call</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="pricing max-w-6xl mx-auto px-6 py-10">
+    <section class="text-center">
+      <h1 class="font-display text-4xl md:text-5xl font-extrabold tracking-tight">Simple, transparent pricing</h1>
+      <p class="mt-3 text-slate-600 max-w-2xl mx-auto">Pick a starting tier. Minutes are billed as you use them. No long-term contracts—upgrade any time.</p>
+
+      <div role="tablist" aria-label="Pricing tabs" class="mt-4 inline-flex gap-3">
+        <a href="#inbound"  class="btn btn-primary">Answer &amp; Book</a>
+        <a href="#outbound" class="btn btn-outline">Outbound Agents</a>
+      </div>
+    </section>
+
+    <!-- Inbound -->
+    <section id="inbound" class="mt-10 scroll-mt-28">
+      <div class="grid-two">
+        <h2 class="text-2xl font-extrabold md:col-span-2">Inbound Reception</h2>
+
+        <article class="price-card p-6">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="text-lg font-extrabold">Starter</h3>
+              <p class="text-slate-600">For solo &amp; small teams getting coverage.</p>
+              <p class="text-slate-400 text-sm mt-1">+ $0.06 / answered minute</p>
+            </div>
+            <div class="price-font text-3xl font-extrabold">$299<span class="text-base font-bold text-slate-500">/mo</span></div>
+          </div>
+          <ul class="mt-4 space-y-2 text-slate-700">
+            <li>1 phone line, 1 calendar</li>
+            <li>FAQ/knowledge base grounding</li>
+            <li>Email summaries &amp; transcripts</li>
+            <li>Basic CRM notes (Zapier/webhook)</li>
+          </ul>
+          <a href="book.html?plan=inbound&tier=starter&intent=inbound-starter" class="btn btn-primary mt-5">Talk to Sales</a>
+        </article>
+
+        <article class="price-card p-6">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="text-lg font-extrabold">Pro</h3>
+              <p class="text-slate-600">For growing teams that need integrations.</p>
+              <p class="text-slate-400 text-sm mt-1">+ $0.06 / answered minute</p>
+            </div>
+            <div class="price-font text-3xl font-extrabold">$699<span class="text-base font-bold text-slate-500">/mo</span></div>
+          </div>
+          <ul class="mt-4 space-y-2 text-slate-700">
+            <li>Multi-line &amp; multi-calendar</li>
+            <li>CRM write-backs (HubSpot/Pipedrive)</li>
+            <li>Live transfer &amp; human handoff</li>
+            <li>Sentiment &amp; call summaries</li>
+          </ul>
+          <a href="book.html?plan=inbound&tier=pro&intent=inbound-pro" class="btn btn-primary mt-5">Talk to Sales</a>
+        </article>
+
+        <article class="price-card price-card--wide p-6">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="text-lg font-extrabold">Scale</h3>
+              <p class="text-slate-600">For high volume &amp; custom workflows.</p>
+              <p class="text-slate-400 text-sm mt-1">+ $0.05 / answered minute</p>
+            </div>
+            <div class="price-font text-3xl font-extrabold">$1499<span class="text-base font-bold text-slate-500">/mo</span></div>
+          </div>
+          <ul class="mt-4 space-y-2 text-slate-700">
+            <li>SLA + priority routing</li>
+            <li>Custom flows &amp; compliance</li>
+            <li>Analytics exports &amp; QA tools</li>
+            <li>Dedicated success manager</li>
+          </ul>
+          <a href="book.html?plan=inbound&tier=scale&intent=inbound-scale" class="btn btn-primary mt-5">Talk to Sales</a>
+        </article>
+      </div>
+    </section>
+
+    <!-- Outbound -->
+    <section id="outbound" class="mt-14 scroll-mt-28">
+      <div class="grid-two">
+        <!-- Removed the header CTA; just the heading now -->
+        <h2 class="text-2xl font-extrabold md:col-span-2">Outbound Campaigns</h2>
+
+        <article class="price-card p-6">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="text-lg font-extrabold">Starter</h3>
+              <p class="text-slate-600">Warm-up, reactivation &amp; light follow-ups.</p>
+              <p class="text-slate-400 text-sm mt-1">+ per-minute usage</p>
+            </div>
+            <div class="price-font text-3xl font-extrabold">$699<span class="text-base font-bold text-slate-500">/mo</span></div>
+          </div>
+          <ul class="mt-4 space-y-2 text-slate-700">
+            <li>1 campaign, up to 2K contacts</li>
+            <li>Throttling &amp; time-window control</li>
+            <li>Script variants (A/B)</li>
+            <li>CSV import &amp; basic outcomes</li>
+          </ul>
+          <a href="book.html?plan=outbound&tier=starter&intent=outbound-starter" class="btn btn-primary mt-5">Talk to Sales</a>
+        </article>
+
+        <article class="price-card p-6">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="text-lg font-extrabold">Pro</h3>
+              <p class="text-slate-600">Pipeline-driven outreach with CRM sync.</p>
+              <p class="text-slate-400 text-sm mt-1">+ per-minute usage</p>
+            </div>
+            <div class="price-font text-3xl font-extrabold">$1299<span class="text-base font-bold text-slate-500">/mo</span></div>
+          </div>
+          <ul class="mt-4 space-y-2 text-slate-700">
+            <li>3 campaigns, up to 10K contacts</li>
+            <li>HubSpot/Pipedrive write-backs</li>
+            <li>Lead scoring &amp; call outcomes</li>
+            <li>Calendar drops on live connects</li>
+          </ul>
+          <a href="book.html?plan=outbound&tier=pro&intent=outbound-pro" class="btn btn-primary mt-5">Talk to Sales</a>
+        </article>
+
+        <article class="price-card price-card--wide p-6">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="text-lg font-extrabold">Scale</h3>
+              <p class="text-slate-600">High-volume programs &amp; custom tooling.</p>
+              <p class="text-slate-400 text-sm mt-1">+ discounted usage</p>
+            </div>
+            <div class="price-font text-3xl font-extrabold">$2499<span class="text-base font-bold text-slate-500">/mo</span></div>
+          </div>
+          <ul class="mt-4 space-y-2 text-slate-700">
+            <li>Unlimited campaigns, 50K+ contacts</li>
+            <li>Advanced analytics &amp; QA</li>
+            <li>Custom integrations &amp; compliance</li>
+            <li>Dedicated success &amp; SLAs</li>
+          </ul>
+          <a href="book.html?plan=outbound&tier=scale&intent=outbound-scale" class="btn btn-primary mt-5">Talk to Sales</a>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="py-12">
+    <div class="wrap px-6 flex items-center justify-between">
+      <p class="text-sm text-slate-500">© <span id="y"></span> Agentlyne</p>
+      <a class="btn btn-primary" href="book.html">Book a Call</a>
+    </div>
+  </footer>
+
+  <script>
+    const y=document.getElementById('y'); if(y) y.textContent=new Date().getFullYear();
+  </script>
+</body>
+</html>

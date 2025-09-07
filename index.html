@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agentlyne — Innovative AI Solutions</title>
+  <meta name="theme-color" content="#0ea5e9" />
+  <meta name="description" content="Agentlyne answers calls, qualifies leads, books appointments, and can run outbound campaigns automatically." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind (utility sprinkles) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Manrope', 'ui-sans-serif', 'system-ui'],
+            display: ['Space Grotesk', 'Manrope', 'ui-sans-serif', 'system-ui']
+          },
+          colors: { brand: { 500:'#0ea5e9', 600:'#0284c7' } }
+        }
+      }
+    }
+  </script>
+
+  <!-- Site config + CSS -->
+  <script src="/config.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="font-sans">
+  <!-- background orbs + canvas (parallax) -->
+  <canvas id="bgCanvas" aria-hidden="true"></canvas>
+  <div class="glow-orb blue" aria-hidden="true"></div>
+  <div class="glow-orb purple" aria-hidden="true"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30">
+    <div class="wrap px-6">
+      <div class="h-16 mt-4 rounded-full flex items-center justify-between px-4 bg-slate-900/40 backdrop-blur-xl border border-white/10">
+        <a class="flex items-center gap-2" href="index.html">
+          <span class="inline-grid place-items-center h-9 w-9 rounded-full bg-gradient-to-br from-sky-400 to-violet-500">
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+              <path d="M12 3l8 4v6c0 4.418-3.582 8-8 8S4 17.418 4 13V7l8-4z" class="fill-white/95"/>
+            </svg>
+          </span>
+          <strong class="text-slate-100">Agentlyne</strong>
+        </a>
+        <nav class="flex items-center gap-3">
+          <a href="pricing.html" class="btn btn-outline">Pricing</a>
+          <a href="book.html" class="btn btn-primary">Book a Call</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero relative">
+    <div class="wrap px-6">
+      <div class="grid lg:grid-cols-12 gap-12 items-start">
+        <div class="lg:col-span-7">
+          <h1 class="font-display text-5xl sm:text-6xl font-bold tracking-[-0.02em] leading-[1.05] bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+            Answer every call.<br/>Book more appointments.
+          </h1>
+        </div>
+        <div class="lg:col-span-5">
+          <p class="text-lg text-slate-300/90 max-w-md mt-2">
+            Our voice AI greets callers, qualifies leads, and schedules on your calendar—so revenue doesn't slip through the cracks.
+          </p>
+          <div class="mt-6 flex gap-3">
+            <a href="#workflow" class="btn btn-primary">Try the Live Demo</a>
+            <a href="pricing.html" class="btn btn-outline">See Pricing</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Avatar Carousel -->
+      <div class="stage" id="stage" aria-label="Agent avatars carousel">
+        <div class="carousel-track">
+          <div class="card prev" data-name="Riley — Support Agent">
+            <img src="bean.png" alt="Riley — Support Agent" loading="eager" />
+            <div class="name-badge" aria-hidden="true">Riley — Support Agent</div>
+          </div>
+
+          <div class="card active" data-name="Julia — Receptionist Agent">
+            <img src="white.png" alt="Julia — Receptionist Agent" />
+            <div class="name-badge" aria-hidden="true">Julia — Receptionist Agent</div>
+          </div>
+          
+          <div class="card next" data-name="Hana — Sales Agent">
+            <img src="asian.png" alt="Hana — Sales Agent" />
+            <div class="name-badge" aria-hidden="true">Hana — Sales Agent</div>
+          </div>
+        </div>
+
+        <!-- Bottom-center controls -->
+        <div class="bottom-controls" aria-label="Carousel controls">
+          <button type="button" class="arrow" id="prevBtn" aria-label="Previous slide">‹</button>
+          <div class="nav-dots" role="tablist" aria-label="Slide selector">
+            <button type="button" class="dot" data-go="0" role="tab" aria-label="Go to Riley"></button>
+            <button type="button" class="dot active" data-go="1" role="tab" aria-label="Go to Julia" aria-selected="true"></button>
+            <button type="button" class="dot" data-go="2" role="tab" aria-label="Go to Hana"></button>
+          </div>
+          <button type="button" class="arrow" id="nextBtn" aria-label="Next slide">›</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why teams choose -->
+  <section class="section-dark py-16">
+    <div class="wrap px-6">
+      <div class="problem-wrap">
+        <div class="problems-head mb-6">
+          <h2 class="font-display text-2xl md:text-3xl font-bold text-slate-200 w-full text-center">
+            Why teams choose Agentlyne
+          </h2>
+        </div>
+
+        <div class="problem-grid">
+          <article class="problem-card">
+            <div class="problem-icon">⚡</div>
+            <h3>Leads vanish when calls wait</h3>
+            <p>People reach out when they’re ready. If they hit a queue or voicemail, most never try again. We pick up instantly and keep them engaged.</p>
+            <span class="angle-dots"></span>
+          </article>
+
+          <article class="problem-card card-accent">
+            <div class="problem-icon">📅</div>
+            <h3>Scheduling without the back-and-forth</h3>
+            <p>Your agent checks calendars, offers times, and confirms bookings in seconds—no phone tag, no manual follow-ups.</p>
+            <a href="#workflow" class="btn-learn">
+              See how it works
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M7 17L17 7M17 7H8M17 7v9" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </a>
+            <span class="angle-dots"></span>
+          </article>
+
+          <article class="problem-card">
+            <div class="problem-icon">🛡️</div>
+            <h3>Consistent experience, 24/7</h3>
+            <p>Every caller gets a friendly greeting, proper qualification, and smart routing—at noon, at midnight, and on weekends.</p>
+            <span class="angle-dots"></span>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WORKFLOW -->
+  <section id="workflow" class="section-work py-24">
+    <div class="wrap px-6">
+      <div class="grid lg:grid-cols-2 gap-12 items-center">
+        <div>
+          <h2 class="font-display text-4xl md:text-5xl font-bold tracking-[-0.02em] text-slate-800">
+            From first ring<br class="hidden md:block"> to confirmed booking
+          </h2>
+          <div class="mt-6 text-slate-600">
+            <div class="flow-bullet">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Always-on coverage 24/7
+            </div>
+            <div class="flow-bullet">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Instant scheduling—no back-and-forth
+            </div>
+            <div class="flow-bullet">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Lead capture, qualification & smart routing
+            </div>
+            <div class="flow-bullet">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Automatic reminders & follow-ups
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-wrap">
+          <div class="flow-grid" aria-hidden="true">
+            <div class="flow-card flow-phone">📞 Phone call</div>
+            <div class="flow-card flow-route">🔀 Smart routing</div>
+            <div class="flow-card flow-book">📅 Easy booking</div>
+            <div class="flow-card flow-chat">💬 Chat</div>
+            <div class="flow-card flow-loop">♻️ Engagement loop</div>
+          </div>
+
+          <div class="flow-lines" aria-hidden="true">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+              <path d="M33 25 C40 25, 42 25, 50 25" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
+              <path d="M66 25 C72 25, 76 25, 82 25" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
+              <path d="M50 35 C50 45, 37 50, 33 58" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
+              <path d="M82 35 C82 45, 66 50, 66 58" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
+              <defs>
+                <linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#60a5fa"/>
+                  <stop offset="100%" stop-color="#a78bfa"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOLUTIONS (cards that now point to pricing page) -->
+  <section id="solutions" class="section-light py-20">
+    <div class="wrap px-6">
+      <h2 class="font-display text-4xl md:text-5xl font-bold tracking-[-0.02em] text-slate-800 text-center">
+        AI Call Automation—Built for Growth
+      </h2>
+
+      <div class="solutions-grid mt-10">
+        <!-- Outbound -->
+        <article class="plan-card">
+          <div class="plan-head">
+            <div class="dot-matrix" aria-hidden="true"></div>
+            <div>
+              <span class="plan-chip">Proactive</span>
+              <h3 class="plan-title mt-2"><span class="text-brand-600">Outbound</span> campaigns</h3>
+              <p class="plan-sub">Warm leads, re-engage old ones, and follow up automatically.</p>
+            </div>
+          </div>
+          <a href="pricing.html#outbound" class="plan-cta">VIEW PRICING</a>
+          <div class="features">
+            <div class="feat">Sequenced outreach with throttling</div>
+            <div class="feat">Personalized scripts & context memory</div>
+            <div class="feat">CRM write-backs & pipeline sync</div>
+            <div class="feat">Conversion & pickup-rate analytics</div>
+            <div class="feat">A/B prompts & voice variants</div>
+          </div>
+        </article>
+
+        <!-- Inbound -->
+        <article class="plan-card">
+          <div class="plan-head">
+            <div class="dot-matrix" aria-hidden="true"></div>
+            <div>
+              <span class="plan-chip">Answer & Book</span>
+              <h3 class="plan-title mt-2"><span class="text-brand-600">Inbound</span> reception</h3>
+              <p class="plan-sub">Pick up every call, resolve questions, and schedule on the spot.</p>
+            </div>
+          </div>
+          <a href="pricing.html#inbound" class="plan-cta">VIEW PRICING</a>
+          <div class="features">
+            <div class="feat">24/7 answering with smart routing</div>
+            <div class="feat">Live calendar offers & confirmations</div>
+            <div class="feat">Knowledge-base/FAQ grounding</div>
+            <div class="feat">Handoff to humans when needed</div>
+            <div class="feat">Sentiment & call summaries</div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Custom Workflow (Unified Panel) -->
+  <section class="section-light py-12">
+    <div class="wrap px-6">
+      <div class="workflow-unified mt-4">
+        <div class="wf-col wf-left">
+          <h3 class="text-slate-800 text-2xl md:text-3xl font-extrabold tracking-[-0.01em]">
+            Custom <span class="text-brand-600">Workflows</span>
+          </h3>
+          <p class="text-slate-600 mt-2 max-w-xl">
+            We map your intake, routing, and scheduling rules into a reliable voice flow.
+            You get fewer missed calls and more booked revenue.
+          </p>
+          <div class="wf-mosaic" aria-hidden="true"></div>
+        </div>
+
+        <div class="wf-col wf-right">
+          <a href="book.html?intent=custom-workflows" class="wf-pill">CONTACT SALES</a>
+          <div class="features mt-6">
+            <div class="feat">Process discovery & KPI alignment</div>
+            <div class="feat">Tooling + CRM integration plan</div>
+            <div class="feat">Iterative prompt/voice tuning</div>
+            <div class="feat">Launch, monitor, refine</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-12">
+    <div class="wrap px-6 flex items-center justify-between">
+      <p class="text-sm text-slate-400">© <span id="y"></span> Agentlyne</p>
+      <div class="flex gap-3">
+        <a class="btn btn-outline" href="pricing.html">Pricing</a>
+        <a class="btn btn-primary" href="book.html">Book a Call</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script>
+    // Year
+    const yEl = document.getElementById('y');
+    if (yEl) yEl.textContent = new Date().getFullYear();
+
+    // ----- Carousel -----
+    const cards = Array.from(document.querySelectorAll('.card'));
+    const dots  = Array.from(document.querySelectorAll('.dot'));
+    let currentIndex = 1; // center
+    let isAnimating = false;
+
+    function setParallax(){
+      const unit  = Math.min(window.innerWidth, 1600) * 0.13;
+      const shift = (1 - currentIndex) * unit;
+      document.documentElement.style.setProperty('--bg-shift',  `${shift}px`);
+      document.documentElement.style.setProperty('--orb-shift', `${shift * 0.65}px`);
+      document.documentElement.style.setProperty('--fg-shift',  `${shift * 0.20}px`);
+    }
+    function updateDots(){
+      dots.forEach((d,i)=>{
+        const on = i===currentIndex;
+        d.classList.toggle('active', on);
+        d.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    function layout(index){
+      cards.forEach((card,i)=>{
+        card.classList.remove('active','prev','next','hidden');
+        let diff = i - index; if (diff < 0) diff += cards.length;
+        if (diff===0) card.classList.add('active');
+        else if (diff===1) card.classList.add('next');
+        else if (diff===cards.length-1) card.classList.add('prev');
+        else card.classList.add('hidden');
+      });
+    }
+    function updateCarousel(index){
+      if (isAnimating) return;
+      isAnimating = true;
+      currentIndex = index;
+      layout(currentIndex);
+      updateDots();
+      setParallax();
+      setTimeout(()=>{ isAnimating = false; }, 900);
+    }
+    function nextSlide(){ updateCarousel((currentIndex+1) % cards.length); }
+    function prevSlide(){ updateCarousel((currentIndex-1 + cards.length) % cards.length); }
+
+    document.getElementById('nextBtn')?.addEventListener('click', nextSlide);
+    document.getElementById('prevBtn')?.addEventListener('click', prevSlide);
+
+    document.addEventListener('keydown', (e)=>{
+      if (e.key==='ArrowRight') nextSlide();
+      if (e.key==='ArrowLeft')  prevSlide();
+    });
+
+    dots.forEach(d=> d.addEventListener('click', ()=> updateCarousel(+d.dataset.go)));
+    cards.forEach((card,idx)=> card.addEventListener('click', ()=>{ if(!card.classList.contains('active')) updateCarousel(idx); }));
+
+    layout(currentIndex);
+    updateDots();
+    setParallax();
+    window.addEventListener('resize', setParallax);
+
+    // Subtle background (stars)
+    (function(){
+      const c = document.getElementById('bgCanvas');
+      if (!c) return;
+      const ctx = c.getContext('2d', {alpha:true});
+      let dpr = Math.max(1, window.devicePixelRatio||1);
+      let W, H; const particles = [];
+      function resize(){
+        W = c.width  = Math.floor(innerWidth * dpr);
+        H = c.height = Math.floor(innerHeight * dpr);
+        c.style.width  = innerWidth + 'px';
+        c.style.height = innerHeight + 'px';
+      }
+      resize(); addEventListener('resize', resize);
+      for (let i=0;i<50;i++){
+        particles.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.2,vy:(Math.random()-.5)*.2,r:Math.random()*2+1,o:Math.random()*.5+.1});
+      }
+      (function loop(){
+        ctx.clearRect(0,0,W,H);
+        particles.forEach(p=>{
+          p.x+=p.vx; p.y+=p.vy;
+          if(p.x<0)p.x=W; if(p.x>W)p.x=0;
+          if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+          ctx.beginPath(); ctx.arc(p.x,p.y,p.r*dpr,0,Math.PI*2);
+          ctx.fillStyle = `rgba(142,202,230,${p.o})`;
+          ctx.fill();
+        });
+        requestAnimationFrame(loop);
+      })();
+    })();
+  </script>
+</body>
+</html>
