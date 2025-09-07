@@ -19,105 +19,121 @@ try { dns.setDefaultResultOrder('ipv4first'); } catch {}
 const app = express();
 app.disable('x-powered-by');
 
-app.use(cors()); // tighten origins later if needed
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-// Serve the static site (ag-api/public)
+// Serve static site
 app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
-
-// Be explicit for "/" just in case
 app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
 /* ------------------------------------------------------------------ */
-/* Database (Supabase / Postgres) — force IPv4                        */
+/* Database (Supabase / Postgres) — prefer IPv4, show sanitized info  */
 /* ------------------------------------------------------------------ */
-const DB_URL = process.env.DATABASE_URL;
+const DB_URL = process.env.DATABASE_URL ?? '';
+const FORCED_IPV4 = process.env.DATABASE_HOST_IPV4 || '';
+
+function parseDb(url) {
+  try {
+    const u = new URL(url);
+    return {
+      user: decodeURIComponent(u.username || ''),
+      passPresent: !!u.password,
+      host: u.hostname,
+      port: Number(u.port || 5432),
+      db: (u.pathname || '/').slice(1),
+      sslRequired:
+        u.searchParams.get('sslmode') === 'require' || process.env.PGSSLMODE === 'require',
+      raw: u,
+    };
+  } catch { return null; }
+}
+
+const dbInfo = parseDb(DB_URL);
+if (!dbInfo) {
+  console.warn('No/invalid DATABASE_URL set');
+}
 
 let pool;
+(async () => {
+  if (!dbInfo) { pool = new Pool(); return; }
 
-async function initDbPool() {
-  if (!DB_URL) {
-    pool = new Pool();
-    return;
-  }
-
-  const u = new URL(DB_URL);
-  const host = u.hostname;
-  const port = Number(u.port || 5432);
-  const user = decodeURIComponent(u.username || '');
-  const password = decodeURIComponent(u.password || '');
-  const database = (u.pathname || '/').replace(/^\//, '');
-  const sslRequired =
-    u.searchParams.get('sslmode') === 'require' || process.env.PGSSLMODE === 'require';
+  const tls = dbInfo.sslRequired ? { rejectUnauthorized: false, servername: dbInfo.host } : undefined;
 
   try {
-    // Resolve DB host to an IPv4 address explicitly
-    const { address } = await dnsPromises.lookup(host, { family: 4 });
+    let targetHost = dbInfo.host;
+    let mode = 'DNS IPv4 lookup';
+    if (FORCED_IPV4) {
+      targetHost = FORCED_IPV4;
+      mode = 'IPv4 (static env)';
+    } else {
+      const { address } = await dnsPromises.lookup(dbInfo.host, { family: 4 });
+      targetHost = address;
+    }
+
     pool = new Pool({
-      host: address,      // IPv4 literal, avoids IPv6 route
-      port,
-      user,
-      password,
-      database,
-      // Keep TLS, but set SNI to original hostname so certs still match
-      ssl: sslRequired ? { rejectUnauthorized: false, servername: host } : undefined,
+      host: targetHost,
+      port: dbInfo.port,
+      user: dbInfo.user,
+      password: dbInfo.raw.password,
+      database: dbInfo.db,
+      ssl: tls,
       keepAlive: true,
     });
-    console.log('DB configured for IPv4 at', address, '(SNI:', host, ')');
+
+    console.log(
+      `DB mode: ${FORCED_IPV4 ? 'IPv4 (static env)' : 'IPv4 (lookup)'} ${targetHost} ` +
+      `(SNI: ${dbInfo.host}) user: ${dbInfo.user}`
+    );
   } catch (err) {
-    console.warn('DB IPv4 resolve failed; using connectionString fallback:', err?.message);
+    console.warn('DB IPv4 resolve failed; falling back to connectionString:', err?.message);
     pool = new Pool({
       connectionString: DB_URL,
-      ssl: DB_URL.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
+      ssl: dbInfo.sslRequired ? { rejectUnauthorized: false } : undefined,
       keepAlive: true,
     });
   }
-}
 
-async function ensureSchema() {
-  const sql = `
-    CREATE TABLE IF NOT EXISTS bookings (
-      id BIGSERIAL PRIMARY KEY,
-      created_at timestamptz DEFAULT now(),
-      full_name text,
-      email text,
-      phone text,
-      company text,
-      date date,
-      time text,
-      timezone text,
-      notes text
-    );`;
+  // Ensure schema
   try {
-    await pool.query(sql);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bookings (
+        id BIGSERIAL PRIMARY KEY,
+        created_at timestamptz DEFAULT now(),
+        full_name text,
+        email text,
+        phone text,
+        company text,
+        date date,
+        time text,
+        timezone text,
+        notes text
+      );
+    `);
     console.log('DB schema ready');
-  } catch (err) {
-    console.error('book db ensure failed:', err?.message);
+  } catch (e) {
+    console.error('book db ensure failed:', e?.message);
   }
-}
-
-// init pool and then ensure schema
-initDbPool()
-  .then(ensureSchema)
-  .catch(err => console.error('DB init failed:', err?.message));
+})();
 
 /* ------------------------------------------------------------------ */
 /* Email (SMTP)                                                       */
 /* ------------------------------------------------------------------ */
+import nodemailerPkg from 'nodemailer';
+const nodemailer2 = nodemailerPkg; // (just to be explicit in some bundlers)
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecureEnv = String(process.env.SMTP_SECURE || '').toLowerCase();
 const smtpSecure = smtpSecureEnv
   ? ['1', 'true', 'yes', 'on'].includes(smtpSecureEnv)
-  : smtpPort === 465; // infer if not provided
+  : smtpPort === 465;
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,           // e.g. smtp.mailgun.org / smtp.gmail.com
-  port: smtpPort,                        // 587 or 465
-  secure: smtpSecure,                    // true only for 465
+const transporter = nodemailer2.createTransport({
+  host: process.env.SMTP_HOST,
+  port: smtpPort,
+  secure: smtpSecure,
   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   tls: { minVersion: 'TLSv1.2' },
   pool: true
@@ -134,7 +150,6 @@ transporter.verify()
 /* Helpers                                                            */
 /* ------------------------------------------------------------------ */
 const clean = (s) => String(s ?? '').replace(/[\r\n]+/g, ' ').trim();
-
 function pick(obj, keys, def = '') {
   for (const k of keys) {
     if (obj && obj[k] != null && String(obj[k]).trim() !== '') return String(obj[k]);
@@ -147,33 +162,18 @@ function pick(obj, keys, def = '') {
 /* ------------------------------------------------------------------ */
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-// SMTP connectivity test
-app.get('/api/email-verify', async (_req, res) => {
-  try {
-    await transporter.verify();
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('verify error:', e);
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-// Send a one-off test email
-app.get('/api/email-test', async (req, res) => {
-  try {
-    const to = clean(req.query.to || SALES_EMAIL || FROM_EMAIL);
-    const info = await transporter.sendMail({
-      from: FROM_EMAIL,
-      to,
-      subject: 'Agentlyne email test',
-      text: 'If you see this, SMTP works.'
-    });
-    console.log('email-test id:', info.messageId);
-    res.json({ ok: true, id: info.messageId });
-  } catch (e) {
-    console.error('email-test error:', e);
-    res.status(500).json({ ok: false, error: e.message });
-  }
+// Show sanitized DB info (no password)
+app.get('/api/db-info', (_req, res) => {
+  if (!dbInfo) return res.json({ ok: false, error: 'no DATABASE_URL' });
+  res.json({
+    ok: true,
+    user: dbInfo.user,
+    host: dbInfo.host,
+    port: dbInfo.port,
+    db: dbInfo.db,
+    sslRequired: dbInfo.sslRequired,
+    mode: FORCED_IPV4 ? 'IPv4 (static env)' : 'IPv4 (lookup)',
+  });
 });
 
 // DB connectivity smoke test
@@ -199,12 +199,10 @@ app.get('/api/slots', (req, res) => {
   res.json({ slots });
 });
 
-// Booking endpoint (auto-reply + internal notification)
+// Booking endpoint
 app.post('/api/book', async (req, res) => {
   try {
     const b = req.body || {};
-
-    // Accept multiple possible field names from form/JS
     const fullName = clean(pick(b, ['fullName', 'full_name', 'name']));
     const email    = clean(pick(b, ['email', 'mail']));
     const phone    = clean(pick(b, ['phone', 'tel', 'telephone']));
@@ -213,19 +211,14 @@ app.post('/api/book', async (req, res) => {
     const time     = clean(pick(b, ['time']));
     const timeZone = clean(pick(b, ['timeZone', 'timezone', 'tz']));
     const notes    = String(pick(b, ['notes', 'message']));
-
     const duration = Number(pick(b, ['duration'], 30)) || 30;
     const plan     = clean(pick(b, ['plan']));
     const tier     = clean(pick(b, ['tier']));
 
     if (!fullName || !email || !date || !time) {
-      return res.status(400).json({
-        ok: false,
-        error: 'Missing required fields: fullName, email, date, time.'
-      });
+      return res.status(400).json({ ok: false, error: 'Missing required fields: fullName, email, date, time.' });
     }
 
-    // Save to DB (best effort)
     try {
       await pool.query(
         `INSERT INTO bookings (full_name,email,phone,company,date,time,timezone,notes)
@@ -235,10 +228,8 @@ app.post('/api/book', async (req, res) => {
       console.log('book db insert: ok');
     } catch (e) {
       console.error('book db insert failed:', e?.message);
-      // continue; db is best-effort
     }
 
-    // Internal notification
     const salesText = `
 New booking request
 
@@ -263,7 +254,6 @@ ${notes.trim() || '-'}
     });
     console.log('booking->sales msg id:', salesInfo.messageId);
 
-    // Auto-confirmation to submitter
     const ackInfo = await transporter.sendMail({
       from: FROM_EMAIL,
       to: email,
