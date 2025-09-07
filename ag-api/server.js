@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import dns from 'dns';
 import { promises as dnsPromises } from 'dns';
 
-// Prefer IPv4 when available (avoids ENETUNREACH on IPv6-only hosts)
+// Prefer IPv4 on platforms without IPv6 (avoids ENETUNREACH)
 try { dns.setDefaultResultOrder('ipv4first'); } catch {}
 
 /* ------------------------------------------------------------------ */
@@ -29,7 +29,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 // Serve the static site (ag-api/public)
 app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
 
-// Explicit root file
+// Be explicit for "/" just in case
 app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
 /* ------------------------------------------------------------------ */
@@ -38,86 +38,104 @@ app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 const DB_URL = process.env.DATABASE_URL;
 
 let pool;
-async function initDbPool() {
-  if (!DB_URL) {
-    console.warn('No DATABASE_URL set; DB features disabled');
-    pool = new Pool(); // will still let /api/db-info say "no url"
-    return;
-  }
-
-  const u = new URL(DB_URL);
-  const host = u.hostname;
-  const port = Number(u.port || 5432);
-  const user = decodeURIComponent(u.username || '');
-  const password = decodeURIComponent(u.password || '');
-  const database = (u.pathname || '/').replace(/^\//, '');
-  const sslRequired =
-    u.searchParams.get('sslmode') === 'require' ||
-    process.env.PGSSLMODE === 'require';
-
-  // Try to pin to IPv4 for the connection (Render-friendly)
+if (DB_URL) {
   try {
+    const u = new URL(DB_URL);
+    const host = u.hostname;
+    const port = Number(u.port || 5432);
+    const user = decodeURIComponent(u.username || '');
+    const password = decodeURIComponent(u.password || '');
+    const database = (u.pathname || '/').replace(/^\//, '');
+    const sslRequired =
+      u.searchParams.get('sslmode') === 'require' || process.env.PGSSLMODE === 'require';
+
+    // Resolve DB host to an IPv4 address explicitly
     const { address } = await dnsPromises.lookup(host, { family: 4 });
     pool = new Pool({
-      host: address,         // IPv4 literal address
+      host: address,
       port,
       user,
       password,
       database,
+      // keep TLS; set SNI to original hostname so certs match
       ssl: sslRequired ? { rejectUnauthorized: false, servername: host } : undefined,
       keepAlive: true,
-      max: 5,
     });
-    console.log(`DB mode: IPv4 (static env) ${address} (SNI: ${host}) user: ${user}`);
+    console.log('DB mode: IPv4 (static env) %s (SNI: %s) user: %s', address, host, user);
   } catch (err) {
     console.warn('DB IPv4 resolve failed; using connectionString fallback:', err?.message);
     pool = new Pool({
       connectionString: DB_URL,
-      ssl: sslRequired ? { rejectUnauthorized: false } : undefined,
+      ssl: DB_URL.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
       keepAlive: true,
-      max: 5,
     });
+  }
+} else {
+  pool = new Pool(); // use Render/Heroku-style PG* envs if present
+}
+
+async function getBookingColumns() {
+  try {
+    const r = await pool.query(
+      `select column_name
+         from information_schema.columns
+        where table_schema='public' and table_name='bookings'`
+    );
+    return new Set(r.rows.map(r => r.column_name));
+  } catch {
+    return new Set();
   }
 }
 
-await initDbPool();
+async function migrateSchema() {
+  // Create table if missing
+  await pool.query(`
+    create table if not exists bookings (
+      id bigserial primary key,
+      created_at timestamptz default now(),
+      full_name text,
+      email text,
+      phone text,
+      company text,
+      date date,
+      time text,
+      timezone text,
+      notes text
+    );
+  `).catch(e => console.warn('create table warn:', e?.message));
 
-/**
- * Ensure schema:
- * - Create table if missing
- * - Add any missing columns (safe if they already exist)
- */
+  // Add columns if missing
+  await pool.query(`alter table bookings add column if not exists full_name text;`)
+    .catch(()=>{});
+  await pool.query(`alter table bookings add column if not exists name text;`)
+    .catch(()=>{});
+
+  // If legacy "name" column exists and is NOT NULL, drop NOT NULL
+  await pool.query(`
+    do $$
+    begin
+      if exists (
+        select 1
+          from information_schema.columns
+         where table_schema='public'
+           and table_name='bookings'
+           and column_name='name'
+           and is_nullable='NO'
+      ) then
+        execute 'alter table bookings alter column name drop not null';
+      end if;
+    end$$;
+  `).catch(e => console.warn('drop NOT NULL warn:', e?.message));
+}
+
+let BOOKING_COLS = new Set();
 async function ensureSchema() {
-  if (!DB_URL) return;
-
-  const baseSql = `CREATE TABLE IF NOT EXISTS bookings (id BIGSERIAL PRIMARY KEY);`;
-  const columnDefs = [
-    `created_at timestamptz DEFAULT now()`,
-    `full_name  text`,
-    `email      text`,
-    `phone      text`,
-    `company    text`,
-    `"date"     date`,
-    `"time"     text`,
-    `timezone   text`,
-    `notes      text`,
-  ];
-
   try {
-    await pool.query(baseSql);
-    // Add columns idempotently
-    for (const def of columnDefs) {
-      // extract column name (first token, accounting for quoted names)
-      const col = def.split(/\s+/)[0];
-      await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ${def};`);
-      // Optional: for created_at, ensure default is present if column existed without it
-      if (col === 'created_at') {
-        await pool.query(`ALTER TABLE bookings ALTER COLUMN created_at SET DEFAULT now();`);
-      }
-    }
+    await migrateSchema();
+    BOOKING_COLS = await getBookingColumns();
     console.log('DB schema ready');
   } catch (err) {
-    console.error('book db ensure failed:', err?.message);
+    console.warn('DB schema ensure failed:', err?.message);
   }
 }
 await ensureSchema();
@@ -164,25 +182,33 @@ function pick(obj, keys, def = '') {
 /* ------------------------------------------------------------------ */
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-// Quick DB info (what the server *thinks* it’s using)
-app.get('/api/db-info', (_req, res) => {
+// Quick peek at how server parsed the DATABASE_URL and table columns
+app.get('/api/db-info', async (_req, res) => {
   try {
-    if (!DB_URL) return res.json({ ok: false, error: 'no DATABASE_URL' });
-    const u = new URL(DB_URL);
-    const sslRequired =
-      u.searchParams.get('sslmode') === 'require' ||
-      process.env.PGSSLMODE === 'require';
+    const u = DB_URL ? new URL(DB_URL) : null;
     res.json({
       ok: true,
-      user: decodeURIComponent(u.username || ''),
-      host: u.hostname,
-      port: Number(u.port || 5432),
-      db: (u.pathname || '/').replace(/^\//, ''),
-      sslRequired,
+      user: u ? decodeURIComponent(u.username) : undefined,
+      host: u?.hostname,
+      port: u?.port ? Number(u.port) : undefined,
+      db: u ? (u.pathname || '/').replace(/^\//,'') : undefined,
+      sslRequired: !!(u && (u.searchParams.get('sslmode') === 'require')),
       mode: 'IPv4 (static env)',
+      columns: Array.from(BOOKING_COLS),
     });
   } catch (e) {
-    res.json({ ok: false, error: e?.message || 'parse error' });
+    res.json({ ok:false, error: e.message });
+  }
+});
+
+// Re-run schema migration on demand
+app.post('/api/db-migrate', async (_req, res) => {
+  try {
+    await migrateSchema();
+    BOOKING_COLS = await getBookingColumns();
+    res.json({ ok: true, columns: Array.from(BOOKING_COLS) });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
   }
 });
 
@@ -192,18 +218,7 @@ app.get('/api/db-test', async (_req, res) => {
     const r = await pool.query('select now()');
     res.json({ ok: true, now: r.rows[0] });
   } catch (e) {
-    console.error(e);
     res.status(500).json({ ok: false, error: e.message || '' });
-  }
-});
-
-// Re-run schema ensure on demand (handy after password/env changes)
-app.post('/api/db-migrate', async (_req, res) => {
-  try {
-    await ensureSchema();
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e?.message || 'migrate failed' });
   }
 });
 
@@ -213,7 +228,6 @@ app.get('/api/email-verify', async (_req, res) => {
     await transporter.verify();
     res.json({ ok: true });
   } catch (e) {
-    console.error('verify error:', e);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -228,10 +242,8 @@ app.get('/api/email-test', async (req, res) => {
       subject: 'Agentlyne email test',
       text: 'If you see this, SMTP works.'
     });
-    console.log('email-test id:', info.messageId);
     res.json({ ok: true, id: info.messageId });
   } catch (e) {
-    console.error('email-test error:', e);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -273,17 +285,22 @@ app.post('/api/book', async (req, res) => {
       });
     }
 
-    // Save to DB (best effort)
+    // Save to DB (robust to legacy schemas)
     try {
-      await pool.query(
-        `INSERT INTO bookings (full_name,email,phone,company,"date","time",timezone,notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [fullName, email, phone, company, date, time, timeZone, notes]
-      );
+      // Build INSERT columns/values based on actual table shape
+      const cols = ['full_name','email','phone','company','date','time','timezone','notes'];
+      const vals = [fullName,  email,  phone,  company,  date,  time,  timeZone,  notes];
+      if (BOOKING_COLS.has('name')) { cols.push('name'); vals.push(fullName); }
+
+      // placeholders $1..$n
+      const ph = vals.map((_, i) => `$${i+1}`);
+      const sql = `insert into bookings (${cols.join(',')}) values (${ph.join(',')})`;
+
+      await pool.query(sql, vals);
       console.log('book db insert: ok');
     } catch (e) {
       console.error('book db insert failed:', e?.message);
-      // continue; DB is best-effort
+      // continue; db is best-effort
     }
 
     // Internal notification
