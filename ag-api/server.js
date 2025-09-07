@@ -9,13 +9,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dns from 'dns';
 
-// Prefer IPv4 on platforms without IPv6
+// Prefer IPv4 on platforms without IPv6 (avoids ENETUNREACH)
 try { dns.setDefaultResultOrder('ipv4first'); } catch {}
 
 /* ------------------------------------------------------------------ */
 /* App setup                                                          */
 /* ------------------------------------------------------------------ */
 const app = express();
+app.disable('x-powered-by');
+
+app.use(cors());              // you can tighten origins later
+app.use(express.json());
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -26,21 +30,16 @@ app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
 // Be explicit for "/" just in case
 app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
-// CORS (you can tighten later)
-app.use(cors());
-app.use(express.json());
-
 /* ------------------------------------------------------------------ */
 /* Database (Supabase / Postgres)                                     */
 /* ------------------------------------------------------------------ */
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,          // keep ?sslmode=require
+  connectionString: process.env.DATABASE_URL, // keep ?sslmode=require at end
   ssl: process.env.DATABASE_URL?.includes('sslmode=require')
     ? { rejectUnauthorized: false }
     : undefined
 });
 
-// Ensure table exists; don't crash service if DB is unreachable
 async function ensureSchema() {
   const sql = `
     CREATE TABLE IF NOT EXISTS bookings (
@@ -67,13 +66,13 @@ ensureSchema();
 /* ------------------------------------------------------------------ */
 /* Email (Mailgun via SMTP)                                           */
 /* ------------------------------------------------------------------ */
-const smtpPort = Number(process.env.SMTP_PORT || 587);
+const smtpPort   = Number(process.env.SMTP_PORT || 587);
 const smtpSecure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
 
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,       // smtp.mailgun.org
-  port: smtpPort,                    // 587 or 465
-  secure: smtpSecure,                // true only if 465
+  host: process.env.SMTP_HOST,           // e.g. smtp.mailgun.org
+  port: smtpPort,                        // 587 or 465
+  secure: smtpSecure,                    // true only if 465
   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
 });
 
@@ -87,7 +86,6 @@ transporter.verify()
 /* ------------------------------------------------------------------ */
 /* API routes                                                         */
 /* ------------------------------------------------------------------ */
-// --- Routes
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // DB connectivity smoke test
@@ -101,8 +99,7 @@ app.get('/api/db-test', async (_req, res) => {
   }
 });
 
-
-
+// Quick slot suggester
 app.get('/api/slots', (req, res) => {
   const { date } = req.query;
   const base = date ? new Date(`${date}T09:00:00`) : new Date();
@@ -114,6 +111,7 @@ app.get('/api/slots', (req, res) => {
   res.json({ slots });
 });
 
+// Booking endpoint
 app.post('/api/book', async (req, res) => {
   try {
     const {
@@ -132,7 +130,7 @@ app.post('/api/book', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Missing required fields.' });
     }
 
-    // Save to DB (best effort — don’t fail if DB is momentarily down)
+    // Save to DB (best effort)
     try {
       await pool.query(
         `INSERT INTO bookings (full_name,email,phone,company,date,time,timezone,notes)
@@ -184,5 +182,5 @@ ${notes || '-'}
 /* ------------------------------------------------------------------ */
 /* Start                                                              */
 /* ------------------------------------------------------------------ */
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 10000; // Render sets PORT
 app.listen(PORT, () => console.log(`API listening on :${PORT}`));
