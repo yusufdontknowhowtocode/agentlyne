@@ -18,8 +18,9 @@ try { dns.setDefaultResultOrder('ipv4first'); } catch {}
 const app = express();
 app.disable('x-powered-by');
 
-app.use(cors());              // you can tighten origins later
+app.use(cors()); // tighten origins later if needed
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -91,10 +92,15 @@ transporter.verify()
 /* ------------------------------------------------------------------ */
 /* Helpers                                                            */
 /* ------------------------------------------------------------------ */
-const clean = (s) =>
-  String(s ?? '')
-    .replace(/[\r\n]+/g, ' ')
-    .trim();
+const clean = (s) => String(s ?? '').replace(/[\r\n]+/g, ' ').trim();
+
+// pull a value from a set of possible field names
+function pick(obj, keys, def = '') {
+  for (const k of keys) {
+    if (obj && obj[k] != null && String(obj[k]).trim() !== '') return String(obj[k]);
+  }
+  return def;
+}
 
 /* ------------------------------------------------------------------ */
 /* API routes                                                         */
@@ -156,22 +162,27 @@ app.get('/api/slots', (req, res) => {
 // Booking endpoint (auto-reply + internal notification)
 app.post('/api/book', async (req, res) => {
   try {
-    const {
-      fullName = '',
-      email = '',
-      phone = '',
-      company = '',
-      date = '',
-      time = '',
-      timeZone = '',
-      notes = '',
-      duration = 30,
-      plan = '',
-      tier = ''
-    } = req.body || {};
+    const b = req.body || {};
 
-    if (!fullName.trim() || !email.trim() || !date || !time) {
-      return res.status(400).json({ ok: false, error: 'Missing required fields.' });
+    // Accept multiple possible field names from form/JS
+    const fullName = clean(pick(b, ['fullName', 'full_name', 'name']));
+    const email    = clean(pick(b, ['email', 'mail']));
+    const phone    = clean(pick(b, ['phone', 'tel', 'telephone']));
+    const company  = clean(pick(b, ['company', 'org']));
+    const date     = clean(pick(b, ['date']));
+    const time     = clean(pick(b, ['time']));
+    const timeZone = clean(pick(b, ['timeZone', 'timezone', 'tz']));
+    const notes    = String(pick(b, ['notes', 'message']));
+
+    const duration = Number(pick(b, ['duration'], 30)) || 30;
+    const plan     = clean(pick(b, ['plan']));
+    const tier     = clean(pick(b, ['tier']));
+
+    if (!fullName || !email || !date || !time) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Missing required fields: fullName, email, date, time.'
+      });
     }
 
     // Save to DB (best effort)
@@ -189,45 +200,47 @@ app.post('/api/book', async (req, res) => {
     const salesText = `
 New booking request
 
-Name:    ${clean(fullName)}
-Email:   ${clean(email)}
-Phone:   ${clean(phone) || '-'}
-Company: ${clean(company) || '-'}
+Name:    ${fullName}
+Email:   ${email}
+Phone:   ${phone || '-'}
+Company: ${company || '-'}
 
-Plan:    ${clean(plan)} ${clean(tier)}
-When:    ${clean(date)} ${clean(time)} (${clean(timeZone) || 'tz not set'})
-Length:  ${Number(duration) || 30} minutes
+Plan:    ${plan} ${tier}
+When:    ${date} ${time} (${timeZone || 'tz not set'})
+Length:  ${duration} minutes
 
 Notes:
-${String(notes ?? '').trim() || '-'}
+${notes.trim() || '-'}
 `;
-    await transporter.sendMail({
+    const salesInfo = await transporter.sendMail({
       from: FROM_EMAIL,
       to: SALES_EMAIL,
-      replyTo: clean(email),
-      subject: `New booking — ${clean(fullName)} — ${clean(date)} ${clean(time)}`,
+      replyTo: email,
+      subject: `New booking — ${fullName} — ${date} ${time}`,
       text: salesText
     });
+    console.log('booking->sales msg id:', salesInfo.messageId);
 
     // Auto-confirmation to submitter
-    await transporter.sendMail({
+    const ackInfo = await transporter.sendMail({
       from: FROM_EMAIL,
-      to: clean(email),
-      subject: `We received your request — ${clean(date)} ${clean(time)}`,
+      to: email,
+      subject: `We received your request — ${date} ${time}`,
       text:
-`Thanks ${clean(fullName)}! We received your request and will get right back to you.
+`Thanks ${fullName}! We received your request and will get right back to you.
 
 What you submitted
-- Email: ${clean(email)}
-- Phone: ${clean(phone) || '-'}
-- Company: ${clean(company) || '-'}
-- Plan: ${clean(plan)} ${clean(tier)}
-- Preferred time: ${clean(date)} ${clean(time)} ${clean(timeZone)}
+- Email: ${email}
+- Phone: ${phone || '-'}
+- Company: ${company || '-'}
+- Plan: ${plan} ${tier}
+- Preferred time: ${date} ${time} ${timeZone}
 
 If anything changes, just reply to this email.
 
 — Team Agentlyne`
     });
+    console.log('booking->ack msg id:', ackInfo.messageId);
 
     res.json({ ok: true });
   } catch (err) {
