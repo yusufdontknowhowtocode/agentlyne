@@ -64,19 +64,24 @@ async function ensureSchema() {
 ensureSchema();
 
 /* ------------------------------------------------------------------ */
-/* Email (Mailgun via SMTP)                                           */
+/* Email (SMTP)                                                       */
 /* ------------------------------------------------------------------ */
-const smtpPort   = Number(process.env.SMTP_PORT || 587);
-const smtpSecure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
+const smtpPort = Number(process.env.SMTP_PORT || 587);
+const smtpSecureEnv = String(process.env.SMTP_SECURE || '').toLowerCase();
+const smtpSecure = smtpSecureEnv
+  ? ['1', 'true', 'yes', 'on'].includes(smtpSecureEnv)
+  : smtpPort === 465; // infer if not provided
 
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,           // e.g. smtp.mailgun.org
+  host: process.env.SMTP_HOST,           // e.g. smtp.mailgun.org / smtp.gmail.com
   port: smtpPort,                        // 587 or 465
-  secure: smtpSecure,                    // true only if 465
-  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+  secure: smtpSecure,                    // true only for 465
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  tls: { minVersion: 'TLSv1.2' },
+  pool: true
 });
 
-const FROM_EMAIL  = process.env.FROM_EMAIL  || 'Agentlyne <no-reply@mg.agentlyne.com>';
+const FROM_EMAIL  = process.env.FROM_EMAIL  || 'Agentlyne <no-reply@agentlyne.com>';
 const SALES_EMAIL = process.env.SALES_EMAIL || 'sales@agentlyne.com';
 
 transporter.verify()
@@ -84,9 +89,46 @@ transporter.verify()
   .catch(e => console.warn('SMTP not ready:', e?.message));
 
 /* ------------------------------------------------------------------ */
+/* Helpers                                                            */
+/* ------------------------------------------------------------------ */
+const clean = (s) =>
+  String(s ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim();
+
+/* ------------------------------------------------------------------ */
 /* API routes                                                         */
 /* ------------------------------------------------------------------ */
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+// SMTP connectivity test
+app.get('/api/email-verify', async (_req, res) => {
+  try {
+    await transporter.verify();
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('verify error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Send a one-off test email
+app.get('/api/email-test', async (req, res) => {
+  try {
+    const to = clean(req.query.to || SALES_EMAIL || FROM_EMAIL);
+    const info = await transporter.sendMail({
+      from: FROM_EMAIL,
+      to,
+      subject: 'Agentlyne email test',
+      text: 'If you see this, SMTP works.'
+    });
+    console.log('email-test id:', info.messageId);
+    res.json({ ok: true, id: info.messageId });
+  } catch (e) {
+    console.error('email-test error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
 // DB connectivity smoke test
 app.get('/api/db-test', async (_req, res) => {
@@ -111,7 +153,7 @@ app.get('/api/slots', (req, res) => {
   res.json({ slots });
 });
 
-// Booking endpoint
+// Booking endpoint (auto-reply + internal notification)
 app.post('/api/book', async (req, res) => {
   try {
     const {
@@ -123,7 +165,9 @@ app.post('/api/book', async (req, res) => {
       time = '',
       timeZone = '',
       notes = '',
-      duration = 30
+      duration = 30,
+      plan = '',
+      tier = ''
     } = req.body || {};
 
     if (!fullName.trim() || !email.trim() || !date || !time) {
@@ -141,40 +185,53 @@ app.post('/api/book', async (req, res) => {
       console.warn('DB insert failed (continuing):', e?.message);
     }
 
-    // Notify sales
+    // Internal notification
     const salesText = `
 New booking request
 
-Name:   ${fullName}
-Email:  ${email}
-Phone:  ${phone || '-'}
-Company:${company || '-'}
+Name:    ${clean(fullName)}
+Email:   ${clean(email)}
+Phone:   ${clean(phone) || '-'}
+Company: ${clean(company) || '-'}
 
-When:   ${date} ${time} (${timeZone || 'tz not set'})
-Length: ${duration} minutes
+Plan:    ${clean(plan)} ${clean(tier)}
+When:    ${clean(date)} ${clean(time)} (${clean(timeZone) || 'tz not set'})
+Length:  ${Number(duration) || 30} minutes
 
 Notes:
-${notes || '-'}
+${String(notes ?? '').trim() || '-'}
 `;
     await transporter.sendMail({
       from: FROM_EMAIL,
       to: SALES_EMAIL,
-      replyTo: email,
-      subject: `New booking — ${fullName} — ${date} ${time}`,
+      replyTo: clean(email),
+      subject: `New booking — ${clean(fullName)} — ${clean(date)} ${clean(time)}`,
       text: salesText
     });
 
-    // Confirmation
+    // Auto-confirmation to submitter
     await transporter.sendMail({
       from: FROM_EMAIL,
-      to: email,
-      subject: `Booked: ${date} ${time} (Agentlyne)`,
-      text: `Thanks ${fullName}! We received your request and will send a calendar invite shortly.\n\nIf anything changes, just reply to this email.`
+      to: clean(email),
+      subject: `We received your request — ${clean(date)} ${clean(time)}`,
+      text:
+`Thanks ${clean(fullName)}! We received your request and will get right back to you.
+
+What you submitted
+- Email: ${clean(email)}
+- Phone: ${clean(phone) || '-'}
+- Company: ${clean(company) || '-'}
+- Plan: ${clean(plan)} ${clean(tier)}
+- Preferred time: ${clean(date)} ${clean(time)} ${clean(timeZone)}
+
+If anything changes, just reply to this email.
+
+— Team Agentlyne`
     });
 
     res.json({ ok: true });
   } catch (err) {
-    console.error(err);
+    console.error('book error:', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
