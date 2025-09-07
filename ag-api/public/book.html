@@ -18,6 +18,11 @@
     .btn-ghost{ border:2px solid rgba(2,8,23,.12); background:#fff; color:#0f172a }
     .hint{ color:#64748b }
     .chip{ display:inline-flex; align-items:center; gap:.5rem; padding:.35rem .7rem; border-radius:9999px; background:#fff; border:1px solid rgba(2,8,23,.12); color:#0f172a; font-weight:800 }
+
+    /* Message banner (hidden until JS shows it) */
+    #msg{ display:none; }
+    #msg.ok{ display:block; background:#DCFCE7; color:#065F46; padding:.75rem; border-radius:.75rem; font-weight:700; }
+    #msg.err{ display:block; background:#FEE2E2; color:#991B1B; padding:.75rem; border-radius:.75rem; font-weight:700; }
   </style>
 </head>
 <body class="text-slate-900">
@@ -34,7 +39,7 @@
 
     <div class="grid lg:grid-cols-5 gap-6 items-start">
       <!-- Sales form -->
-      <form id="bookForm" class="card p-5 lg:col-span-3">
+      <form id="bookForm" class="card p-5 lg:col-span-3" novalidate>
         <h2 class="text-xl font-extrabold mb-3">Book a call</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label class="block">
@@ -83,12 +88,12 @@
         <input type="hidden" name="intent" id="fIntent" />
         <input type="hidden" name="source" value="pricing" />
 
-        <div class="mt-6 flex flex-wrap gap-3">
+        <div class="mt-6 flex flex-wrap gap-3 items-center">
           <button class="btn btn-primary" id="bookBtn" type="submit">Book this time</button>
           <button class="btn btn-ghost" type="button" id="testSlot">Suggest times</button>
         </div>
 
-        <p id="msg" class="mt-4 text-sm"></p>
+        <p id="msg" class="mt-4 text-sm" aria-live="polite"></p>
       </form>
 
       <!-- Right column -->
@@ -154,6 +159,13 @@
 
     const api = (p) => `${API_BASE}${p}`;
 
+    function setMsg(kind, text){
+      const el = document.getElementById('msg');
+      el.className = `mt-4 text-sm ${kind === 'ok' ? 'ok' : kind === 'err' ? 'err' : ''}`;
+      el.textContent = text || '';
+      el.style.display = text ? 'block' : 'none';
+    }
+
     // Submit booking
     document.getElementById('bookForm').addEventListener('submit', async (e)=>{
       e.preventDefault();
@@ -166,33 +178,35 @@
       payload.source   = 'pricing';
       payload.duration = 30;
 
-      const msg = document.getElementById('msg');
       const btn = document.getElementById('bookBtn');
-      msg.textContent = 'Booking…'; msg.className = 'mt-4 text-sm text-slate-600';
-      btn.disabled = true;
+      setMsg('', 'Booking…');
+      btn.disabled = true; btn.setAttribute('aria-busy','true');
 
       try{
         const r = await fetch(api('/api/book'), {
           method:'POST',
           headers:{'Content-Type':'application/json'},
+          credentials:'same-origin',
           body: JSON.stringify(payload)
         });
-        const data = await r.json();
-        if(!r.ok || !data.ok) throw new Error(data.error || 'Failed');
 
-        msg.textContent = 'Booked! Check your email for the confirmation.';
-        msg.className = 'mt-4 text-sm text-emerald-600';
-        e.currentTarget.reset();
-        // restore hidden values after reset
-        document.getElementById('fPlan').value   = PLAN;
-        document.getElementById('fTier').value   = TIER;
-        document.getElementById('fIntent').value = INTENT;
+        let data = {};
+        try { data = await r.json(); } catch {}
+        if(!r.ok || !data.ok) {
+          const detail = data && data.error ? ` (${data.error})` : '';
+          throw new Error('Failed' + detail);
+        }
+
+        setMsg('ok', 'Thanks! We received your request — check your email for confirmation.');
+        // optionally lock the form to prevent doubles
+        [...e.currentTarget.elements].forEach(el => el.disabled = true);
+        btn.textContent = 'Sent ✔';
       }catch(err){
         console.error(err);
-        msg.textContent = 'Something went wrong. Please try again' + (SUPPORT ? ` or email ${SUPPORT}.` : '.');
-        msg.className = 'mt-4 text-sm text-rose-600';
-      }finally{
+        setMsg('err', 'Something went wrong. Please try again' + (SUPPORT ? ` or email ${SUPPORT}.` : '.'));
         btn.disabled = false;
+      }finally{
+        btn.removeAttribute('aria-busy');
       }
     });
 
@@ -204,7 +218,7 @@
       wrap.innerHTML = '';
       try{
         const r = await fetch(api(`/api/slots?date=${today}&tz=${encodeURIComponent(tz)}`));
-        const { slots = [] } = await r.json();
+        const { slots = [] } = await r.json().catch(()=>({slots:[]}));
         if (!slots.length){
           const p = document.createElement('p'); p.className='text-xs text-slate-500';
           p.textContent='No suggestions for today. Try another date.'; wrap.appendChild(p); return;
