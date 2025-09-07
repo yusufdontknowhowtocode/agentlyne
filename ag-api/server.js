@@ -1,5 +1,4 @@
 // --- server.js ---------------------------------------------------------------
-// Loads .env when running locally (Render already injects env vars)
 import 'dotenv/config';
 
 import express from 'express';
@@ -9,33 +8,34 @@ import { Pool } from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// resolve __dirname in ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const app = express();
 
-const app = express(); // <-- define app FIRST
+// ---------- Static site (Option B: serve repo root) ----------
+// ag-api/server.js sits inside the "ag-api" folder.
+// One level up (..) is your repo root where index.html, book.html, etc. live.
+const PUBLIC_DIR = path.join(__dirname, '..');
 
-// --- Middleware
-app.use(cors());            // keep it open for now; tighten later if you want
-app.use(express.json());
+// Block access to the server code folder just in case.
+app.use('/ag-api', (_req, res) => res.status(404).end());
 
-// --- Serve static site (ag-api/public)
-app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
-// Optional: force "/" to index.html explicitly
-app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
-// Optional SPA fallback (only if you need it):
+// Serve static site from repo root
+app.use(express.static(PUBLIC_DIR, { extensions: ['html'], dotfiles: 'ignore' }));
+// If you want unknown routes to go to the homepage, uncomment:
 // app.get('*', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
-// --- DB (Supabase / Postgres)
+// ---------- CORS ----------
+app.use(cors()); // permissive for now
+app.use(express.json());
+
+// ---------- Database ----------
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // keep ?sslmode=require at the end
+  connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('sslmode=require')
     ? { rejectUnauthorized: false }
     : undefined
 });
 
-// Ensure table exists (simple schema for bookings)
 async function ensureSchema() {
   const sql = `
     CREATE TABLE IF NOT EXISTS bookings (
@@ -51,37 +51,34 @@ async function ensureSchema() {
       notes text
     );
   `;
-  await pool.query(sql);
+  try { await pool.query(sql); } catch (e) { console.warn('DB ensureSchema skipped:', e.message); }
 }
-ensureSchema().catch(console.error);
+ensureSchema();
 
-// --- Mail (Mailgun via SMTP)
+// ---------- Mail ----------
 const smtpPort   = Number(process.env.SMTP_PORT || 587);
 const smtpSecure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
 
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,           // e.g. smtp.mailgun.org
-  port: smtpPort,                        // 587 or 465
-  secure: smtpSecure,                    // true only if 465
+  host: process.env.SMTP_HOST,
+  port: smtpPort,
+  secure: smtpSecure,
   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
 });
 
 const FROM_EMAIL  = process.env.FROM_EMAIL  || 'Agentlyne <no-reply@mg.agentlyne.com>';
 const SALES_EMAIL = process.env.SALES_EMAIL || 'sales@agentlyne.com';
 
-// Verify SMTP on boot (logs only)
 transporter.verify()
   .then(() => console.log('SMTP ready'))
   .catch(err => console.warn('SMTP not ready:', err?.message));
 
-// --- Routes
+// ---------- API ----------
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-// Quick slot suggester (client passes ?date=YYYY-MM-DD)
 app.get('/api/slots', (req, res) => {
   const { date } = req.query;
   const base = date ? new Date(`${date}T09:00:00`) : new Date();
-  // 10:00, 13:00, 15:30 (UTC) as a simple demo
   const slots = [60 * 10, 60 * 13, 60 * 15 + 30].map(min => {
     const d = new Date(base);
     d.setUTCHours(0, min, 0, 0);
@@ -90,33 +87,21 @@ app.get('/api/slots', (req, res) => {
   res.json({ slots });
 });
 
-// Booking endpoint used by book.html
 app.post('/api/book', async (req, res) => {
   try {
-    const {
-      fullName = '',
-      email = '',
-      phone = '',
-      company = '',
-      date = '',
-      time = '',
-      timeZone = '',
-      notes = '',
-      duration = 30
-    } = req.body || {};
+    const { fullName = '', email = '', phone = '', company = '',
+            date = '', time = '', timeZone = '', notes = '', duration = 30 } = req.body || {};
 
     if (!fullName.trim() || !email.trim() || !date || !time) {
       return res.status(400).json({ ok: false, error: 'Missing required fields.' });
     }
 
-    // Save to DB
     await pool.query(
       `INSERT INTO bookings (full_name,email,phone,company,date,time,timezone,notes)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [fullName, email, phone, company, date, time, timeZone, notes]
     );
 
-    // Email to Sales
     const salesText = `
 New booking request
 
@@ -139,7 +124,6 @@ ${notes || '-'}
       text: salesText
     });
 
-    // Confirmation to customer
     await transporter.sendMail({
       from: FROM_EMAIL,
       to: email,
@@ -154,6 +138,6 @@ ${notes || '-'}
   }
 });
 
-// --- Start
+// ---------- Start ----------
 const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => console.log(`API listening on :${PORT}`));
