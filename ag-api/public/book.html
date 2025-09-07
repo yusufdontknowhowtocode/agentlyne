@@ -110,9 +110,9 @@
   </div>
 
   <script>
-    const APP   = window.APP_CONFIG || {};
+    const APP      = window.APP_CONFIG || {};
     const API_BASE = (APP.API_BASE ?? '').trim() || '';
-    const SUPPORT  = APP.SUPPORT_EMAIL || 'info@agentlyne.com';
+    const SUPPORT  = APP.SUPPORT_EMAIL || 'info@chalfontwebs.com';
     const BRAND    = APP.BRAND_NAME || 'Agentlyne';
 
     const qs = new URLSearchParams(location.search);
@@ -136,6 +136,14 @@
       banner.classList.remove('hidden');
     }
     function clearBanner(){ banner.className='hidden'; banner.textContent=''; }
+
+    // Try to parse JSON; if not JSON, return raw text
+    async function readJSONorText(res){
+      const ct = res.headers.get('content-type') || '';
+      const raw = await res.text();
+      try { return { json: ct.includes('application/json') ? JSON.parse(raw) : null, text: raw }; }
+      catch { return { json: null, text: raw }; }
+    }
 
     // Init
     (function init(){
@@ -183,20 +191,23 @@
       btn.disabled = true; btn.textContent = 'Booking…';
 
       try {
-        const r = await fetch(api('/api/book'), {
+        const res = await fetch(api('/api/book'), {
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify(payload)
         });
 
-        // Try to read JSON even on !ok to capture server message
-        let data = null;
-        try { data = await r.json(); } catch {}
-        console.log('book /api/book -> status:', r.status, 'data:', data);
+        const { json, text } = await readJSONorText(res);
+        console.log('book /api/book -> status:', res.status, 'json:', json, 'text:', text);
 
-        if (!r.ok || !(data && data.ok === true)) {
-          const msg = (data && data.error) ? data.error : `Request failed (${r.status})`;
-          throw new Error(msg);
+        // Accept any 2xx unless the server explicitly says ok:false
+        const ok = res.ok && (json ? json.ok !== false : true);
+
+        if (!ok) {
+          const reason = (json && (json.error || json.message))
+                        || (text || '').trim()
+                        || `HTTP ${res.status}`;
+          throw new Error(reason);
         }
 
         setBanner('ok', 'Booked! Check your email for the confirmation.');
@@ -207,7 +218,7 @@
         document.getElementById('fIntent').value = INTENT;
       } catch (err) {
         console.error('book error:', err);
-        setBanner('err', `Something went wrong. Please try again${SUPPORT ? ` or email ${SUPPORT}.` : '.'}`);
+        setBanner('err', `Something went wrong${err?.message ? `: ${err.message}` : ''}. Please try again${SUPPORT ? ` or email ${SUPPORT}.` : '.'}`);
       } finally {
         btn.disabled = false; btn.textContent = 'Book this time';
       }
