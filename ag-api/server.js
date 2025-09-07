@@ -8,6 +8,7 @@ import { Pool } from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dns from 'dns';
+import { promises as dnsPromises } from 'dns';
 
 // Prefer IPv4 on platforms without IPv6 (avoids ENETUNREACH)
 try { dns.setDefaultResultOrder('ipv4first'); } catch {}
@@ -32,14 +33,45 @@ app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
 app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
 /* ------------------------------------------------------------------ */
-/* Database (Supabase / Postgres)                                     */
+/* Database (Supabase / Postgres) — force IPv4                        */
 /* ------------------------------------------------------------------ */
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // keep ?sslmode=require at end
-  ssl: process.env.DATABASE_URL?.includes('sslmode=require')
-    ? { rejectUnauthorized: false }
-    : undefined
-});
+const DB_URL = process.env.DATABASE_URL;
+
+let pool;
+if (DB_URL) {
+  try {
+    const u = new URL(DB_URL);
+    const host = u.hostname;
+    const port = Number(u.port || 5432);
+    const user = decodeURIComponent(u.username || '');
+    const password = decodeURIComponent(u.password || '');
+    const database = (u.pathname || '/').replace(/^\//, '');
+    const sslRequired =
+      u.searchParams.get('sslmode') === 'require' || process.env.PGSSLMODE === 'require';
+
+    // Resolve DB host to an IPv4 address explicitly
+    const { address } = await dnsPromises.lookup(host, { family: 4 });
+    pool = new Pool({
+      host: address,
+      port,
+      user,
+      password,
+      database,
+      ssl: sslRequired ? { rejectUnauthorized: false } : undefined,
+      keepAlive: true,
+    });
+    console.log('DB configured for IPv4 at', address);
+  } catch (err) {
+    console.warn('DB IPv4 resolve failed, falling back to connectionString:', err?.message);
+    pool = new Pool({
+      connectionString: DB_URL,
+      ssl: DB_URL.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
+      keepAlive: true,
+    });
+  }
+} else {
+  pool = new Pool();
+}
 
 async function ensureSchema() {
   const sql = `
@@ -94,7 +126,6 @@ transporter.verify()
 /* ------------------------------------------------------------------ */
 const clean = (s) => String(s ?? '').replace(/[\r\n]+/g, ' ').trim();
 
-// pull a value from a set of possible field names
 function pick(obj, keys, def = '') {
   for (const k of keys) {
     if (obj && obj[k] != null && String(obj[k]).trim() !== '') return String(obj[k]);
@@ -107,7 +138,6 @@ function pick(obj, keys, def = '') {
 /* ------------------------------------------------------------------ */
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-// SMTP connectivity test
 app.get('/api/email-verify', async (_req, res) => {
   try {
     await transporter.verify();
@@ -118,7 +148,6 @@ app.get('/api/email-verify', async (_req, res) => {
   }
 });
 
-// Send a one-off test email
 app.get('/api/email-test', async (req, res) => {
   try {
     const to = clean(req.query.to || SALES_EMAIL || FROM_EMAIL);
@@ -136,7 +165,6 @@ app.get('/api/email-test', async (req, res) => {
   }
 });
 
-// DB connectivity smoke test
 app.get('/api/db-test', async (_req, res) => {
   try {
     const r = await pool.query('select now()');
@@ -147,7 +175,6 @@ app.get('/api/db-test', async (_req, res) => {
   }
 });
 
-// Quick slot suggester
 app.get('/api/slots', (req, res) => {
   const { date } = req.query;
   const base = date ? new Date(`${date}T09:00:00`) : new Date();
@@ -159,12 +186,10 @@ app.get('/api/slots', (req, res) => {
   res.json({ slots });
 });
 
-// Booking endpoint (auto-reply + internal notification)
 app.post('/api/book', async (req, res) => {
   try {
     const b = req.body || {};
 
-    // Accept multiple possible field names from form/JS
     const fullName = clean(pick(b, ['fullName', 'full_name', 'name']));
     const email    = clean(pick(b, ['email', 'mail']));
     const phone    = clean(pick(b, ['phone', 'tel', 'telephone']));
@@ -192,8 +217,10 @@ app.post('/api/book', async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [fullName, email, phone, company, date, time, timeZone, notes]
       );
+      console.log('book db insert: ok');
     } catch (e) {
-      console.warn('DB insert failed (continuing):', e?.message);
+      console.error('book db insert failed:', e?.message);
+      // continue; db is best-effort
     }
 
     // Internal notification
