@@ -6,6 +6,7 @@
   <title>Book — Agentlyne</title>
   <meta name="theme-color" content="#00b8a9" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Optional runtime config; safe if missing -->
   <script src="/config.js"></script>
   <style>
     :root{ --brand-500:#00e0d8; --brand-600:#00b8a9; }
@@ -33,13 +34,13 @@
     </header>
 
     <div class="grid lg:grid-cols-5 gap-6 items-start">
-      <!-- Sales form (always visible) -->
+      <!-- Sales form -->
       <form id="bookForm" class="card p-5 lg:col-span-3">
         <h2 class="text-xl font-extrabold mb-3">Book a call</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label class="block">
             <span class="text-sm font-semibold">Full name</span>
-            <input name="name" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+            <input name="fullName" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
           </label>
           <label class="block">
             <span class="text-sm font-semibold">Email</span>
@@ -66,7 +67,7 @@
           </label>
           <label class="block">
             <span class="text-sm font-semibold">Time zone</span>
-            <select name="timezone" id="tz" class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none"></select>
+            <select name="timeZone" id="tz" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none"></select>
           </label>
         </div>
 
@@ -78,8 +79,8 @@
         </div>
 
         <!-- Hidden context for CRM -->
-        <input type="hidden" name="plan"  id="fPlan" />
-        <input type="hidden" name="tier"  id="fTier" />
+        <input type="hidden" name="plan"   id="fPlan" />
+        <input type="hidden" name="tier"   id="fTier" />
         <input type="hidden" name="intent" id="fIntent" />
         <input type="hidden" name="source" value="pricing" />
 
@@ -110,8 +111,10 @@
 
   <script>
     const APP = window.APP_CONFIG || {};
-    const API_BASE = APP.API_BASE || 'http://127.0.0.1:5050';
-    const SUPPORT  = APP.SUPPORT_EMAIL || '';
+    // Same-origin by default; override via window.APP_CONFIG.API_BASE if needed
+    const API_BASE = (APP.API_BASE ?? '').trim() || '';
+    const SUPPORT  = APP.SUPPORT_EMAIL || 'info@agentlyne.com';
+    const BRAND    = APP.BRAND_NAME || 'Agentlyne';
 
     // Read intent
     const qs = new URLSearchParams(location.search);
@@ -121,11 +124,11 @@
 
     // Chips + hidden fields + notes
     (function init(){
-      const brand = APP.BRAND_NAME || 'Agentlyne';
-      document.title = `Book — ${brand}`;
+      document.title = `Book — ${BRAND}`;
+      const cap = s => s ? s[0].toUpperCase()+s.slice(1) : s;
 
-      document.getElementById('chipPlan').textContent = PLAN[0].toUpperCase()+PLAN.slice(1);
-      document.getElementById('chipTier').textContent = TIER[0].toUpperCase()+TIER.slice(1);
+      document.getElementById('chipPlan').textContent = cap(PLAN);
+      document.getElementById('chipTier').textContent = cap(TIER);
 
       document.getElementById('fPlan').value   = PLAN;
       document.getElementById('fTier').value   = TIER;
@@ -137,7 +140,7 @@
         notes.value = `Requested: ${pretty}\n\nKey details:\n• Team size / call volume\n• CRMs / tools\n• Hours of coverage\n• Any compliance needs`;
       }
 
-      // Timezones
+      // Timezones (current first)
       const tzSelect = document.getElementById('tz');
       const current = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const zones = (Intl.supportedValuesOf && Intl.supportedValuesOf('timeZone')) || [current];
@@ -145,7 +148,6 @@
         const o = document.createElement('option'); o.value = o.textContent = z; tzSelect.appendChild(o);
       });
 
-      // Persist selection (optional analytics)
       try{
         localStorage.setItem('agentlyne_plan', PLAN);
         localStorage.setItem('agentlyne_tier', TIER);
@@ -153,25 +155,20 @@
       }catch{}
     })();
 
-    // Submit booking
+    // helper to build API URLs (avoids double slashes)
+    const api = (p) => `${API_BASE}${p}`;
+
+    // Submit booking (posts JSON with names that match the API)
     document.getElementById('bookForm').addEventListener('submit', async (e)=>{
       e.preventDefault();
+
       const fd = new FormData(e.currentTarget);
-      const payload = {
-        fullName: fd.get('name')?.trim(),
-        email:    fd.get('email')?.trim(),
-        phone:    fd.get('phone')?.trim(),
-        company:  fd.get('company')?.trim(),
-        date:     fd.get('date'),
-        time:     fd.get('time'),
-        timeZone: fd.get('timezone'),
-        notes:    fd.get('notes')?.trim(),
-        duration: 30,
-        plan:     PLAN,
-        tier:     TIER,
-        intent:   INTENT,
-        source:   'pricing'
-      };
+      const payload = Object.fromEntries(fd.entries());
+      payload.plan   = PLAN;
+      payload.tier   = TIER;
+      payload.intent = INTENT;
+      payload.source = 'pricing';
+      payload.duration = 30;
 
       const msg = document.getElementById('msg');
       const btn = document.getElementById('bookBtn');
@@ -179,7 +176,7 @@
       btn.disabled = true;
 
       try{
-        const r = await fetch(`${API_BASE}/api/book`, {
+        const r = await fetch(api('/api/book'), {
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify(payload)
@@ -187,9 +184,13 @@
         const data = await r.json();
         if(!r.ok || !data.ok) throw new Error(data.error || 'Failed');
 
-        msg.textContent = 'Booked! Check your email for the invite.';
+        msg.textContent = 'Booked! Check your email for the confirmation.';
         msg.className = 'mt-4 text-sm text-emerald-600';
         e.currentTarget.reset();
+        // restore plan/tier hidden fields after reset
+        document.getElementById('fPlan').value   = PLAN;
+        document.getElementById('fTier').value   = TIER;
+        document.getElementById('fIntent').value = INTENT;
       }catch(err){
         console.error(err);
         msg.textContent = 'Something went wrong. Please try again' + (SUPPORT ? ` or email ${SUPPORT}.` : '.');
@@ -206,7 +207,7 @@
       const wrap = document.getElementById('slotList');
       wrap.innerHTML = '';
       try{
-        const r = await fetch(`${API_BASE}/api/slots?date=${today}&tz=${encodeURIComponent(tz)}`);
+        const r = await fetch(api(`/api/slots?date=${today}&tz=${encodeURIComponent(tz)}`));
         const { slots = [] } = await r.json();
         if (!slots.length){
           const p = document.createElement('p'); p.className='text-xs text-slate-500';
