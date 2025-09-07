@@ -112,7 +112,7 @@
   <script>
     const APP      = window.APP_CONFIG || {};
     const API_BASE = (APP.API_BASE ?? '').trim() || '';
-    const SUPPORT  = APP.SUPPORT_EMAIL || 'info@chalfontwebs.com';
+    const SUPPORT  = APP.SUPPORT_EMAIL || 'info@agentlyne.com';
     const BRAND    = APP.BRAND_NAME || 'Agentlyne';
 
     const qs = new URLSearchParams(location.search);
@@ -120,9 +120,11 @@
     const TIER   = (qs.get('tier')  || 'starter').toLowerCase();
     const INTENT = (qs.get('intent')|| `${PLAN}-${TIER}`);
 
-    // UI helpers
     const api = p => `${API_BASE}${p}`;
     const banner = document.getElementById('banner');
+    const form   = document.getElementById('bookForm');   // <-- use direct form ref
+    const btn    = document.getElementById('bookBtn');
+
     function setBanner(kind, text) {
       banner.className = "mb-4 rounded-xl border p-3 text-sm";
       if (kind === 'ok') {
@@ -137,15 +139,6 @@
     }
     function clearBanner(){ banner.className='hidden'; banner.textContent=''; }
 
-    // Try to parse JSON; if not JSON, return raw text
-    async function readJSONorText(res){
-      const ct = res.headers.get('content-type') || '';
-      const raw = await res.text();
-      try { return { json: ct.includes('application/json') ? JSON.parse(raw) : null, text: raw }; }
-      catch { return { json: null, text: raw }; }
-    }
-
-    // Init
     (function init(){
       document.title = `Book — ${BRAND}`;
       const cap = s => s ? s[0].toUpperCase()+s.slice(1) : s;
@@ -156,19 +149,17 @@
       document.getElementById('fIntent').value = INTENT;
 
       const pretty = INTENT.replace(/[-_]+/g,' ').replace(/\b\w/g,s=>s.toUpperCase());
-      const notes = document.querySelector('textarea[name="notes"]');
+      const notes = form.querySelector('textarea[name="notes"]');
       if (notes && !notes.value.trim()) {
         notes.value = `Requested: ${pretty}\n\nKey details:\n• Team size / call volume\n• CRMs / tools\n• Hours of coverage\n• Any compliance needs`;
       }
 
-      // Timezones
       const tzSelect = document.getElementById('tz');
       const current = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const zones = (Intl.supportedValuesOf && Intl.supportedValuesOf('timeZone')) || [current,'UTC'];
       [current, ...zones.filter(z=>z!==current)].forEach(z=>{
         const o=document.createElement('option'); o.value=o.textContent=z; tzSelect.appendChild(o);
       });
-
       try{
         localStorage.setItem('agentlyne_plan', PLAN);
         localStorage.setItem('agentlyne_tier', TIER);
@@ -176,55 +167,45 @@
       }catch{}
     })();
 
-    // Submit
-    document.getElementById('bookForm').addEventListener('submit', async (e)=>{
+    form.addEventListener('submit', async (e)=>{
       e.preventDefault();
       clearBanner();
 
-      const fd = new FormData(e.currentTarget);
+      const fd = new FormData(form);
       const payload = Object.fromEntries(fd.entries());
-      // reinforce context
-      payload.plan = PLAN; payload.tier = TIER; payload.intent = INTENT;
-      payload.source = 'pricing'; payload.duration = Number(payload.duration||30) || 30;
+      payload.plan   = PLAN;
+      payload.tier   = TIER;
+      payload.intent = INTENT;
+      payload.source = 'pricing';
+      payload.duration = 30;
 
-      const btn = document.getElementById('bookBtn');
       btn.disabled = true; btn.textContent = 'Booking…';
 
       try {
-        const res = await fetch(api('/api/book'), {
+        const r = await fetch(api('/api/book'), {
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify(payload)
         });
-
-        const { json, text } = await readJSONorText(res);
-        console.log('book /api/book -> status:', res.status, 'json:', json, 'text:', text);
-
-        // Accept any 2xx unless the server explicitly says ok:false
-        const ok = res.ok && (json ? json.ok !== false : true);
-
-        if (!ok) {
-          const reason = (json && (json.error || json.message))
-                        || (text || '').trim()
-                        || `HTTP ${res.status}`;
-          throw new Error(reason);
+        let data = null; try { data = await r.json(); } catch {}
+        if (!r.ok || !(data && data.ok === true)) {
+          throw new Error((data && data.error) || `Request failed (${r.status})`);
         }
 
         setBanner('ok', 'Booked! Check your email for the confirmation.');
-        e.currentTarget.reset();
-        // restore hidden fields after reset
+        form.reset();                                     // <-- use form.reset(), not e.currentTarget
+        // restore hidden after reset
         document.getElementById('fPlan').value   = PLAN;
         document.getElementById('fTier').value   = TIER;
         document.getElementById('fIntent').value = INTENT;
       } catch (err) {
         console.error('book error:', err);
-        setBanner('err', `Something went wrong${err?.message ? `: ${err.message}` : ''}. Please try again${SUPPORT ? ` or email ${SUPPORT}.` : '.'}`);
+        setBanner('err', `Something went wrong. Please try again${SUPPORT ? ` or email ${SUPPORT}.` : '.'}`);
       } finally {
         btn.disabled = false; btn.textContent = 'Book this time';
       }
     });
 
-    // Suggest times
     document.getElementById('testSlot').addEventListener('click', async ()=>{
       const tz = document.getElementById('tz').value || 'UTC';
       const today = new Date().toISOString().slice(0,10);
@@ -244,8 +225,8 @@
           b.type='button';
           b.textContent=d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
           b.onclick=()=>{
-            document.querySelector('input[name="date"]').value = d.toISOString().slice(0,10);
-            document.querySelector('input[name="time"]').value = d.toISOString().slice(11,16);
+            form.querySelector('input[name="date"]').value = d.toISOString().slice(0,10);
+            form.querySelector('input[name="time"]').value = d.toISOString().slice(11,16);
             document.getElementById('tz').value = tz;
             wrap.innerHTML = '';
           };
