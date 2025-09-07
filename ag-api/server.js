@@ -87,7 +87,21 @@ transporter.verify()
 /* ------------------------------------------------------------------ */
 /* API routes                                                         */
 /* ------------------------------------------------------------------ */
+// --- Routes
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+// DB connectivity smoke test
+app.get('/api/db-test', async (_req, res) => {
+  try {
+    const r = await pool.query('select now()');
+    res.json({ ok: true, now: r.rows[0] });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+
 
 app.get('/api/slots', (req, res) => {
   const { date } = req.query;
