@@ -1,4 +1,4 @@
-// --- server.js ---------------------------------------------------------------
+// Loads .env locally (on Render, env vars are injected)
 import 'dotenv/config';
 
 import express from 'express';
@@ -7,35 +7,40 @@ import nodemailer from 'nodemailer';
 import { Pool } from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dns from 'dns';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Prefer IPv4 on platforms without IPv6
+try { dns.setDefaultResultOrder('ipv4first'); } catch {}
+
+/* ------------------------------------------------------------------ */
+/* App setup                                                          */
+/* ------------------------------------------------------------------ */
 const app = express();
 
-// ---------- Static site (Option B: serve repo root) ----------
-// ag-api/server.js sits inside the "ag-api" folder.
-// One level up (..) is your repo root where index.html, book.html, etc. live.
-const PUBLIC_DIR = path.join(__dirname, '..');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = path.join(__dirname, 'public');
 
-// Block access to the server code folder just in case.
-app.use('/ag-api', (_req, res) => res.status(404).end());
+// Serve the static site (ag-api/public)
+app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
 
-// Serve static site from repo root
-app.use(express.static(PUBLIC_DIR, { extensions: ['html'], dotfiles: 'ignore' }));
-// If you want unknown routes to go to the homepage, uncomment:
-// app.get('*', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+// Be explicit for "/" just in case
+app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
-// ---------- CORS ----------
-app.use(cors()); // permissive for now
+// CORS (you can tighten later)
+app.use(cors());
 app.use(express.json());
 
-// ---------- Database ----------
+/* ------------------------------------------------------------------ */
+/* Database (Supabase / Postgres)                                     */
+/* ------------------------------------------------------------------ */
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL,          // keep ?sslmode=require
   ssl: process.env.DATABASE_URL?.includes('sslmode=require')
     ? { rejectUnauthorized: false }
     : undefined
 });
 
+// Ensure table exists; don't crash service if DB is unreachable
 async function ensureSchema() {
   const sql = `
     CREATE TABLE IF NOT EXISTS bookings (
@@ -49,20 +54,26 @@ async function ensureSchema() {
       time text,
       timezone text,
       notes text
-    );
-  `;
-  try { await pool.query(sql); } catch (e) { console.warn('DB ensureSchema skipped:', e.message); }
+    );`;
+  try {
+    await pool.query(sql);
+    console.log('DB schema ready');
+  } catch (err) {
+    console.warn('DB not reachable yet; continuing. Detail:', err?.message);
+  }
 }
 ensureSchema();
 
-// ---------- Mail ----------
-const smtpPort   = Number(process.env.SMTP_PORT || 587);
+/* ------------------------------------------------------------------ */
+/* Email (Mailgun via SMTP)                                           */
+/* ------------------------------------------------------------------ */
+const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecure = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
 
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: smtpPort,
-  secure: smtpSecure,
+  host: process.env.SMTP_HOST,       // smtp.mailgun.org
+  port: smtpPort,                    // 587 or 465
+  secure: smtpSecure,                // true only if 465
   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
 });
 
@@ -71,9 +82,11 @@ const SALES_EMAIL = process.env.SALES_EMAIL || 'sales@agentlyne.com';
 
 transporter.verify()
   .then(() => console.log('SMTP ready'))
-  .catch(err => console.warn('SMTP not ready:', err?.message));
+  .catch(e => console.warn('SMTP not ready:', e?.message));
 
-// ---------- API ----------
+/* ------------------------------------------------------------------ */
+/* API routes                                                         */
+/* ------------------------------------------------------------------ */
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/slots', (req, res) => {
@@ -89,19 +102,34 @@ app.get('/api/slots', (req, res) => {
 
 app.post('/api/book', async (req, res) => {
   try {
-    const { fullName = '', email = '', phone = '', company = '',
-            date = '', time = '', timeZone = '', notes = '', duration = 30 } = req.body || {};
+    const {
+      fullName = '',
+      email = '',
+      phone = '',
+      company = '',
+      date = '',
+      time = '',
+      timeZone = '',
+      notes = '',
+      duration = 30
+    } = req.body || {};
 
     if (!fullName.trim() || !email.trim() || !date || !time) {
       return res.status(400).json({ ok: false, error: 'Missing required fields.' });
     }
 
-    await pool.query(
-      `INSERT INTO bookings (full_name,email,phone,company,date,time,timezone,notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [fullName, email, phone, company, date, time, timeZone, notes]
-    );
+    // Save to DB (best effort — don’t fail if DB is momentarily down)
+    try {
+      await pool.query(
+        `INSERT INTO bookings (full_name,email,phone,company,date,time,timezone,notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [fullName, email, phone, company, date, time, timeZone, notes]
+      );
+    } catch (e) {
+      console.warn('DB insert failed (continuing):', e?.message);
+    }
 
+    // Notify sales
     const salesText = `
 New booking request
 
@@ -124,6 +152,7 @@ ${notes || '-'}
       text: salesText
     });
 
+    // Confirmation
     await transporter.sendMail({
       from: FROM_EMAIL,
       to: email,
@@ -138,6 +167,8 @@ ${notes || '-'}
   }
 });
 
-// ---------- Start ----------
-const PORT = process.env.PORT || 5050;
+/* ------------------------------------------------------------------ */
+/* Start                                                              */
+/* ------------------------------------------------------------------ */
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API listening on :${PORT}`));
