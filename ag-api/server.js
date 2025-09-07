@@ -58,7 +58,7 @@ async function initDbPool() {
     // Resolve DB host to an IPv4 address explicitly
     const { address } = await dnsPromises.lookup(host, { family: 4 });
     pool = new Pool({
-      host: address,      // IPv4 literal, avoids IPv6
+      host: address,      // IPv4 literal, avoids IPv6 route
       port,
       user,
       password,
@@ -67,9 +67,9 @@ async function initDbPool() {
       ssl: sslRequired ? { rejectUnauthorized: false, servername: host } : undefined,
       keepAlive: true,
     });
-    console.log('DB configured for IPv4 at', address, ' (SNI:', host, ')');
+    console.log('DB configured for IPv4 at', address, '(SNI:', host, ')');
   } catch (err) {
-    console.warn('DB IPv4 resolve failed, falling back to connectionString:', err?.message);
+    console.warn('DB IPv4 resolve failed; using connectionString fallback:', err?.message);
     pool = new Pool({
       connectionString: DB_URL,
       ssl: DB_URL.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
