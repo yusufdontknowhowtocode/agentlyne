@@ -446,3 +446,7 @@ body{
 @media (min-width:900px){ .problem-card{ grid-column:span 4 !important; } }
 /* Hide the fallback error text; JS will toggle a banner instead */
 #form-error, .footer-error, .error, .error-text { display: none; }
+
+.retell-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:1000}
+.retell-card{width:420px;height:560px;background:#0b1020;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden}
+.retell-close{position:absolute;top:8px;right:10px;background:transparent;border:0;color:#fff;font-size:24px;cursor:pointer;z-index:1}
