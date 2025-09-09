@@ -385,29 +385,62 @@ If anything changes, just reply to this email.
 /* Retell: mint Web Call token (used by the website modal)            */
 /* ------------------------------------------------------------------ */
 // 🔧 FIX: use api.retellai.com (not api.retell.ai)
+// Mint a Retell web-call token (used by the website modal)
 app.post('/api/retell/token', async (req, res) => {
   try {
-    const r = await fetch('https://api.retellai.com/v1/web-call-tokens', {
+    const apiKey  = process.env.RETELL_API_KEY;   // Secret key from Retell > API Keys
+    const agentId = process.env.RETELL_AGENT_ID;  // e.g. ag-112
+    if (!apiKey || !agentId) {
+      return res.status(500).json({ ok: false, error: 'Missing RETELL_API_KEY or RETELL_AGENT_ID' });
+    }
+
+    const r = await fetch('https://api.retell.ai/v1/web-call-tokens', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
-      body: JSON.stringify({
-        agent_id: process.env.RETELL_AGENT_ID, // e.g. ag-112
-        // optional metadata:
-        // metadata: { page: req.headers.referer }
-      }),
+      body: JSON.stringify({ agent_id: agentId })
     });
 
-    const data = await r.json();
-    if (!r.ok) return res.status(r.status).json(data); // forward API error details
-    res.json(data); // { token, expires_at, ... }
+    // If Retell doesn’t return 2xx, log the raw text so we can see the HTML/CF page/redirect
+    if (!r.ok) {
+      const text = await r.text();
+      console.error('retell token not ok:', r.status, text);
+      return res.status(r.status).json({ ok: false, error: 'retell_not_ok', status: r.status, text });
+    }
+
+    // Try to parse JSON; if it still isn’t JSON, surface it
+    let data;
+    try {
+      data = await r.json();
+    } catch (e) {
+      const text = await r.text();
+      console.error('retell token json parse failed. Raw:', text);
+      return res.status(502).json({ ok: false, error: 'retell_bad_json', text });
+    }
+
+    // Normalize whatever Retell returns into { token: ... }
+    const token =
+      data?.token ||
+      data?.web_call_token ||
+      data?.client_secret ||
+      data?.access_token ||
+      data?.key;
+
+    if (!token) {
+      console.error('retell token missing in payload:', data);
+      return res.status(502).json({ ok: false, error: 'retell_bad_payload', data });
+    }
+
+    return res.json({ ok: true, token });
   } catch (err) {
     console.error('retell token error:', err);
-    res.status(500).json({ error: 'token_error' });
+    return res.status(500).json({ ok: false, error: 'token_error' });
   }
 });
+
 
 
 /* ------------------------------------------------------------------ */
