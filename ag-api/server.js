@@ -381,6 +381,105 @@ If anything changes, just reply to this email.
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
+/* ------------------------------------------------------------------ */
+/* Retell: mint Web Call token (used by the website modal)            */
+/* ------------------------------------------------------------------ */
+app.post('/api/retell/token', async (req, res) => {
+  try {
+    const r = await fetch('https://api.retell.ai/v1/web-call-tokens', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        agent_id: process.env.RETELL_AGENT_ID,   // ag-112
+        // optional: metadata: { page: req.headers.referer }
+      }),
+    });
+
+    const data = await r.json();
+    if (!r.ok) return res.status(r.status).json(data);
+    res.json(data); // { token, expires_at }
+  } catch (err) {
+    console.error('retell token_error:', err);
+    res.status(500).json({ error: 'token_error' });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Retell: "book_demo" webhook (called by your Custom Function)       */
+/* ------------------------------------------------------------------ */
+app.post('/api/retell/book_demo', async (req, res) => {
+  try {
+    // Retell "book_demo" sends: { name, email, phone, company, notes }
+    const { name, email, phone, company = '', notes = '' } = req.body || {};
+
+    if (!name || !email || !phone) {
+      return res.status(400).json({ ok: false, error: 'missing_required_fields' });
+    }
+
+    // Save lightweight lead in your existing "bookings" table
+    try {
+      await pool.query(
+        `INSERT INTO bookings
+           (full_name, name, email, phone, company, notes, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [name, name, email, phone, company || null, notes || null, 'retell_call']
+      );
+      console.log('retell lead saved → bookings');
+    } catch (e) {
+      console.warn('retell lead save failed:', e?.message);
+      // continue—emails can still go out
+    }
+
+    // Notify sales & ack caller (reuses your existing transporter)
+    try {
+      const summary = `
+New Retell call lead
+
+Name:    ${name}
+Email:   ${email}
+Phone:   ${phone}
+Company: ${company || '-'}
+
+Notes:
+${(notes || '').trim() || '-'}
+`.trim();
+
+      await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: SALES_EMAIL,
+        replyTo: email,
+        subject: `New Retell call lead — ${name}`,
+        text: summary
+      });
+
+      await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: email,
+        subject: `Thanks ${name}! We’ll send your demo details`,
+        text: `Hi ${name},
+
+Thanks for calling! We’ve got your info:
+- Phone: ${phone}
+- Company: ${company || '-'}
+
+We’ll follow up shortly with scheduling details.
+
+— Team Agentlyne`
+      });
+    } catch (e) {
+      console.warn('retell mail send failed:', e?.message);
+    }
+
+    // Tell Retell everything went fine so your "Booking-Confirm" state runs
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('retell book_demo error:', err);
+    res.status(500).json({ ok: false, error: 'server_error' });
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /* Start                                                              */

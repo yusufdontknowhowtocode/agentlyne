@@ -444,3 +444,5 @@ body{
   border:1px solid rgba(255,255,255,.08) !important;
 }
 @media (min-width:900px){ .problem-card{ grid-column:span 4 !important; } }
+/* Hide the fallback error text; JS will toggle a banner instead */
+#form-error, .footer-error, .error, .error-text { display: none; }
