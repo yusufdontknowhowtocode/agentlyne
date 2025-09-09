@@ -384,28 +384,31 @@ If anything changes, just reply to this email.
 /* ------------------------------------------------------------------ */
 /* Retell: mint Web Call token (used by the website modal)            */
 /* ------------------------------------------------------------------ */
+// 🔧 FIX: use api.retellai.com (not api.retell.ai)
 app.post('/api/retell/token', async (req, res) => {
   try {
-    const r = await fetch('https://api.retell.ai/v1/web-call-tokens', {
+    const r = await fetch('https://api.retellai.com/v1/web-call-tokens', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        agent_id: process.env.RETELL_AGENT_ID,   // ag-112
-        // optional: metadata: { page: req.headers.referer }
+        agent_id: process.env.RETELL_AGENT_ID, // e.g. ag-112
+        // optional metadata:
+        // metadata: { page: req.headers.referer }
       }),
     });
 
     const data = await r.json();
-    if (!r.ok) return res.status(r.status).json(data);
-    res.json(data); // { token, expires_at }
+    if (!r.ok) return res.status(r.status).json(data); // forward API error details
+    res.json(data); // { token, expires_at, ... }
   } catch (err) {
-    console.error('retell token_error:', err);
+    console.error('retell token error:', err);
     res.status(500).json({ error: 'token_error' });
   }
 });
+
 
 /* ------------------------------------------------------------------ */
 /* Retell: "book_demo" webhook (called by your Custom Function)       */
@@ -486,3 +489,4 @@ We’ll follow up shortly with scheduling details.
 /* ------------------------------------------------------------------ */
 const PORT = process.env.PORT || 10000; // Render sets PORT
 app.listen(PORT, () => console.log(`API listening on :${PORT}`));
+``
