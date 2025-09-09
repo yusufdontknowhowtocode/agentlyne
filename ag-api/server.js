@@ -386,60 +386,40 @@ If anything changes, just reply to this email.
 /* ------------------------------------------------------------------ */
 // 🔧 FIX: use api.retellai.com (not api.retell.ai)
 // Mint a Retell web-call token (used by the website modal)
+// === /api/retell/token ===
 app.post('/api/retell/token', async (req, res) => {
   try {
-    const apiKey  = process.env.RETELL_API_KEY;   // Secret key from Retell > API Keys
-    const agentId = process.env.RETELL_AGENT_ID;  // e.g. ag-112
-    if (!apiKey || !agentId) {
-      return res.status(500).json({ ok: false, error: 'Missing RETELL_API_KEY or RETELL_AGENT_ID' });
-    }
-
-    const r = await fetch('https://api.retell.ai/v1/web-call-tokens', {
+    const r = await fetch('https://api.retellai.com/v1/web-call-tokens', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
       },
-      body: JSON.stringify({ agent_id: agentId })
+      body: JSON.stringify({
+        agent_id: process.env.RETELL_AGENT_ID, // e.g. ag-112
+        // metadata: { page: req.headers.referer } // optional
+      }),
     });
 
-    // If Retell doesn’t return 2xx, log the raw text so we can see the HTML/CF page/redirect
+    // Helpful diagnostics if the API ever returns non-JSON or an error
+    const text = await r.text();
     if (!r.ok) {
-      const text = await r.text();
-      console.error('retell token not ok:', r.status, text);
-      return res.status(r.status).json({ ok: false, error: 'retell_not_ok', status: r.status, text });
+      console.error('retell token error:', r.status, text);
+      return res.status(r.status).send(text);
     }
-
-    // Try to parse JSON; if it still isn’t JSON, surface it
     let data;
-    try {
-      data = await r.json();
-    } catch (e) {
-      const text = await r.text();
-      console.error('retell token json parse failed. Raw:', text);
-      return res.status(502).json({ ok: false, error: 'retell_bad_json', text });
+    try { data = JSON.parse(text); }
+    catch (e) {
+      console.error('retell token parse error:', e, text);
+      return res.status(502).json({ error: 'Bad token response' });
     }
-
-    // Normalize whatever Retell returns into { token: ... }
-    const token =
-      data?.token ||
-      data?.web_call_token ||
-      data?.client_secret ||
-      data?.access_token ||
-      data?.key;
-
-    if (!token) {
-      console.error('retell token missing in payload:', data);
-      return res.status(502).json({ ok: false, error: 'retell_bad_payload', data });
-    }
-
-    return res.json({ ok: true, token });
+    res.json(data); // { token, expires_at }
   } catch (err) {
     console.error('retell token error:', err);
-    return res.status(500).json({ ok: false, error: 'token_error' });
+    res.status(500).json({ error: 'token_error' });
   }
 });
+
 
 
 
