@@ -373,40 +373,40 @@ If anything changes, just reply to this email.
 /* Retell: mint Web Call token (used by the website modal)            */
 /* ------------------------------------------------------------------ */
 // === /api/retell/token ===
+a// === /api/retell/token ===
+// Mints a web-call access token for the website demo
 app.post('/api/retell/token', async (req, res) => {
   try {
     const r = await fetch('https://api.retellai.com/v2/create-web-call', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+        Authorization: `Bearer ${process.env.RETELL_API_KEY}`,  // includes key_ prefix
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         agent_id: process.env.RETELL_AGENT_ID, // e.g. ag-112
-        // optional: metadata: { page: req.headers.referer }
       }),
     });
 
-    const text = await r.text();
+    const text = await r.text();                    // helpful for debugging
     if (!r.ok) {
       console.error('retell token error:', r.status, text);
       return res.status(r.status).send(text);
     }
-
     let data;
-    try { data = JSON.parse(text); }
-    catch (e) { 
+    try { data = JSON.parse(text); } catch (e) {
       console.error('retell token parse error:', e, text);
-      return res.status(502).json({ error: 'Bad token response' });
+      return res.status(502).json({ error: 'bad_token_response' });
     }
 
-    // Normalize for your web client:
+    // Retell returns { access_token, call_id, ... }
     res.json({ token: data.access_token, call_id: data.call_id });
   } catch (err) {
     console.error('retell token error:', err);
-    res.status(500).json({ ok: false, error: 'retell-token-failed' });
+    res.status(500).json({ error: 'token_error' });
   }
 });
+
 
 
 /* ------------------------------------------------------------------ */

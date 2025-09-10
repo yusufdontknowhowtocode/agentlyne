@@ -410,45 +410,26 @@
   </div>
 
   <script src="https://cdn.retellai.com/webclient/retell-webclient.umd.js"></script>
-  <script>
-    (function () {
-      const trigger  = document.getElementById('live-demo');
-      const modal    = document.getElementById('retell-modal');
-      const root     = document.getElementById('retell-root');
-      const closeBtn = document.getElementById('retell-close');
+<script>
+  async function startJuliaCall() {
+    const r = await fetch('/api/retell/token', { method: 'POST' });
+    if (!r.ok) throw new Error('Token fetch failed');
+    const { token } = await r.json(); // our server returns { token, call_id }
 
-      function showModal(){ modal.style.display = 'flex'; document.body.classList.add('modal-open'); }
-      function hideModal(){ modal.style.display = 'none'; document.body.classList.remove('modal-open'); root.innerHTML = ''; }
+    // Ask mic permission then start the call
+    const client = new window.RetellWebClient();
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+    await client.startCall({ accessToken: token }); // uses access_token from v2
+  }
 
-      closeBtn.addEventListener('click', hideModal);
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideModal(); });
+  document.getElementById('live-demo').addEventListener('click', (e) => {
+    e.preventDefault();
+    startJuliaCall().catch(err => {
+      console.error(err);
+      alert('Could not start the live demo. Check console/network logs.');
+    });
+  });
+</script>
 
-      async function startJuliaCall() {
-        const r = await fetch('/api/retell/token', { method: 'POST' });
-        if (!r.ok) throw new Error('Token fetch failed: ' + r.status);
-        const data = await r.json();
-        const token = data?.token || data?.web_call_token || data?.client_secret;
-        if (!token) throw new Error('No token in response');
-
-        showModal();
-
-        const client = new RetellWebClient({
-          token,
-          theme: 'dark',
-          showTranscript: true
-        });
-        client.mount(root);
-        client.on('call-ended', hideModal);
-      }
-
-      trigger.addEventListener('click', (e) => {
-        e.preventDefault();
-        startJuliaCall().catch(err => {
-          console.error('[live-demo]', err);
-          alert('Could not start the live demo. Check console/network logs.');
-        });
-      });
-    })();
-  </script>
 </body>
 </html>
