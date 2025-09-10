@@ -393,65 +393,72 @@
   </script>
 
   <!-- Retell Modal -->
-  <div id="retell-modal" class="retell-modal" role="dialog" aria-modal="true" aria-label="Live demo">
-    <div class="retell-card">
-      <button id="retell-close" class="retell-close" aria-label="Close">×</button>
-      <div id="retell-root" style="width:100%;height:100%;"></div>
-    </div>
+  <!-- Retell Modal -->
+<div id="retell-modal" class="retell-modal" role="dialog" aria-modal="true" aria-label="Live demo">
+  <div class="retell-card">
+    <button id="retell-close" class="retell-close" aria-label="Close">×</button>
+    <div id="retell-root" style="width:100%;height:100%;"></div>
   </div>
+</div>
 
-  <!-- Retell Web SDK (ESM) + Live Demo controller -->
-  <script type="module">
-    import { RetellWebClient } from "https://cdn.jsdelivr.net/npm/@retellai/web-sdk@latest/dist/bundle.esm.js";
+<!-- Retell Web SDK (UMD) -->
+<script src="https://cdn.retellai.com/webclient/retell-webclient.umd.js"></script>
 
-    const modal = document.getElementById('retell-modal');
-    const root  = document.getElementById('retell-root');
-    const closeBtn = document.getElementById('retell-close');
-    const liveBtn  = document.getElementById('live-demo');
+<!-- Live Demo controller (no imports, binds safely) -->
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    const modal   = document.getElementById('retell-modal');
+    const root    = document.getElementById('retell-root');
+    const closeBtn= document.getElementById('retell-close');
+    const btn     = document.getElementById('live-demo');
 
-    let client = null;
+    if (!btn) {
+      console.error('[live-demo] Button #live-demo not found');
+      return;
+    }
 
     const showModal = () => { modal.style.display = 'flex'; document.body.classList.add('modal-open'); };
     const hideModal = () => {
       modal.style.display = 'none';
       document.body.classList.remove('modal-open');
       root.innerHTML = '';
-      if (client) {
-        try { if (typeof client.hangUp === 'function') client.hangUp(); } catch {}
-        try { if (typeof client.endCall === 'function') client.endCall(); } catch {}
-      }
-      client = null;
+      try { client?.endCall?.(); client?.hangUp?.(); } catch {}
     };
-    closeBtn.addEventListener('click', hideModal);
+
+    closeBtn?.addEventListener('click', hideModal);
+
+    let client = null;
 
     async function startLiveDemo() {
       try {
-        // Ask for mic permission early to avoid autoplay/graph issues
+        if (typeof RetellWebClient !== 'function') {
+          throw new Error('Retell SDK failed to load');
+        }
+
+        // Mic permission first to avoid autoplay/graph issues
         await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        // Create modal UI
         showModal();
         client = new RetellWebClient();
 
-        // Useful diagnostics in console
-        client.on?.('status',  (s) => console.log('[retell:status]', s));
-        client.on?.('error',   (e) => console.error('[retell:error]', e));
-        client.on?.('call_started', () => console.log('[retell] call started'));
-        client.on?.('call_ended',   hideModal);
-        client.on?.('call-ended',   hideModal); // some builds use dash
+        // Helpful console diagnostics
+        client.on?.('status', s => console.log('[retell:status]', s));
+        client.on?.('error',  e => console.error('[retell:error]', e));
+        client.on?.('call_ended', hideModal);
+        client.on?.('call-ended', hideModal);
 
-        // Mount UI inside our modal and theme it
+        // Mount UI inside our modal
         await client.createCall({ container: root, theme: 'dark' });
 
-        // Get fresh access token from your server
-        const resp = await fetch('/api/retell/create-web-call', { method: 'POST' });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok || !data?.access_token) {
-          const msg = data?.error || `Token endpoint bad response (${resp.status})`;
+        // Get token from your server (route we added in server.js)
+        const r = await fetch('/api/retell/create-web-call', { method: 'POST' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data?.access_token) {
+          const msg = data?.error || `Token endpoint bad response (${r.status})`;
           throw new Error(msg);
         }
 
-        // Start the call
+        // Go!
         await client.startCall({ accessToken: data.access_token });
       } catch (err) {
         console.error('[live-demo]', err);
@@ -460,7 +467,11 @@
       }
     }
 
-    liveBtn?.addEventListener('click', (e) => { e.preventDefault(); startLiveDemo(); });
-  </script>
+    // Bind click (and prevent default link jump)
+    btn.addEventListener('click', (e) => { e.preventDefault(); startLiveDemo(); });
+
+    console.log('[live-demo] Ready: click the button to start');
+  });
+</script>
 </body>
 </html>
