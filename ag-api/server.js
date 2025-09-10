@@ -372,46 +372,42 @@ If anything changes, just reply to this email.
 /* ------------------------------------------------------------------ */
 /* Retell: mint Web Call token (used by the website modal)            */
 /* ------------------------------------------------------------------ */
+// === /api/retell/token ===
 app.post('/api/retell/token', async (req, res) => {
-  const API_KEY = (process.env.RETELL_API_KEY || '').trim();
-  const AGENT_ID = (process.env.RETELL_AGENT_ID || '').trim();
-
-  if (!API_KEY || !AGENT_ID) {
-    return res.status(500).json({ ok: false, error: 'RETELL env vars missing' });
-  }
-
   try {
-    const r = await fetch('https://api.retellai.com/v1/web-call-tokens', {
+    const r = await fetch('https://api.retellai.com/v2/create-web-call', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${API_KEY}`,
+        Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        agent_id: AGENT_ID,
-        // metadata: { page: req.headers.referer } // optional
+        agent_id: process.env.RETELL_AGENT_ID, // e.g. ag-112
+        // optional: metadata: { page: req.headers.referer }
       }),
     });
 
     const text = await r.text();
     if (!r.ok) {
       console.error('retell token error:', r.status, text);
-      return res.status(502).json({ ok: false, error: 'retell-token-failed', status: r.status });
+      return res.status(r.status).send(text);
     }
 
     let data;
     try { data = JSON.parse(text); }
-    catch (e) {
+    catch (e) { 
       console.error('retell token parse error:', e, text);
-      return res.status(502).json({ ok: false, error: 'bad-token-response' });
+      return res.status(502).json({ error: 'Bad token response' });
     }
 
-    res.json(data); // { token, expires_at, ... }
+    // Normalize for your web client:
+    res.json({ token: data.access_token, call_id: data.call_id });
   } catch (err) {
     console.error('retell token error:', err);
-    res.status(500).json({ ok: false, error: 'token-error' });
+    res.status(500).json({ ok: false, error: 'retell-token-failed' });
   }
 });
+
 
 /* ------------------------------------------------------------------ */
 /* Retell: "book_demo" webhook (called by your Custom Function)       */
