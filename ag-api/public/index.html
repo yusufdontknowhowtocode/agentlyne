@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Agentlyne — Innovative AI Solutions</title>
   <meta name="theme-color" content="#0ea5e9" />
-  <meta name="description" content="Agentlyne answers calls, qualifies leads, books appointments, and can run outbound campaigns automatically." />
+  <meta name="description" content="Agentlyne answers calls, qualifies leads, and can run outbound campaigns automatically." />
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -32,7 +32,7 @@
   <script src="/config.js"></script>
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Modal CSS (missing before) -->
+  <!-- Minimal modal CSS -->
   <style>
     .retell-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.7);backdrop-filter:blur(6px);z-index:1000}
     .retell-card{width:min(92vw,420px);height:min(88vh,560px);background:#0b1020;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden}
@@ -305,7 +305,7 @@
     </div>
   </footer>
 
-  <!-- Scripts -->
+  <!-- Utility Scripts: year, carousel, background -->
   <script>
     // Year
     const yEl = document.getElementById('y');
@@ -355,19 +355,10 @@
 
     document.getElementById('nextBtn')?.addEventListener('click', nextSlide);
     document.getElementById('prevBtn')?.addEventListener('click', prevSlide);
-
-    document.addEventListener('keydown', (e)=>{
-      if (e.key==='ArrowRight') nextSlide();
-      if (e.key==='ArrowLeft')  prevSlide();
-    });
-
+    document.addEventListener('keydown', (e)=>{ if (e.key==='ArrowRight') nextSlide(); if (e.key==='ArrowLeft') prevSlide(); });
     dots.forEach(d=> d.addEventListener('click', ()=> updateCarousel(+d.dataset.go)));
     cards.forEach((card,idx)=> card.addEventListener('click', ()=>{ if(!card.classList.contains('active')) updateCarousel(idx); }));
-
-    layout(currentIndex);
-    updateDots();
-    setParallax();
-    window.addEventListener('resize', setParallax);
+    layout(currentIndex); updateDots(); setParallax(); window.addEventListener('resize', setParallax);
 
     // Subtle background (stars)
     (function(){
@@ -401,7 +392,7 @@
     })();
   </script>
 
-  <!-- Retell modal + client -->
+  <!-- Retell Modal -->
   <div id="retell-modal" class="retell-modal" role="dialog" aria-modal="true" aria-label="Live demo">
     <div class="retell-card">
       <button id="retell-close" class="retell-close" aria-label="Close">×</button>
@@ -409,37 +400,67 @@
     </div>
   </div>
 
-  <script src="https://cdn.retellai.com/webclient/retell-webclient.umd.js"></script>
-<script>
-  const modal = document.getElementById('retell-modal');
-  const root  = document.getElementById('retell-root');
-  const closeBtn = document.getElementById('retell-close');
+  <!-- Retell Web SDK (ESM) + Live Demo controller -->
+  <script type="module">
+    import { RetellWebClient } from "https://cdn.jsdelivr.net/npm/@retellai/web-sdk@latest/dist/bundle.esm.js";
 
-  function showModal(){ modal.style.display = 'flex'; }
-  function hideModal(){ modal.style.display = 'none'; root.innerHTML = ''; }
-  closeBtn.addEventListener('click', hideModal);
+    const modal = document.getElementById('retell-modal');
+    const root  = document.getElementById('retell-root');
+    const closeBtn = document.getElementById('retell-close');
+    const liveBtn  = document.getElementById('live-demo');
 
-  async function startJuliaCall() {
-    // 1) ask your server for an accessToken (v2)
-    const r = await fetch('/api/retell/token', { method: 'POST' });
-    if (!r.ok) throw new Error('token endpoint failed');
-    const { ok, accessToken } = await r.json();
-    if (!ok || !accessToken) throw new Error('no accessToken');
+    let client = null;
 
-    // 2) mount client & start call with the accessToken
-    showModal();
-    const client = new RetellWebClient();
-    client.mount(root);
-    await client.startCall({ accessToken });
+    const showModal = () => { modal.style.display = 'flex'; document.body.classList.add('modal-open'); };
+    const hideModal = () => {
+      modal.style.display = 'none';
+      document.body.classList.remove('modal-open');
+      root.innerHTML = '';
+      if (client) {
+        try { if (typeof client.hangUp === 'function') client.hangUp(); } catch {}
+        try { if (typeof client.endCall === 'function') client.endCall(); } catch {}
+      }
+      client = null;
+    };
+    closeBtn.addEventListener('click', hideModal);
 
-    client.on('call-ended', hideModal);
-  }
+    async function startLiveDemo() {
+      try {
+        // Ask for mic permission early to avoid autoplay/graph issues
+        await navigator.mediaDevices.getUserMedia({ audio: true });
 
-  document.getElementById('live-demo').addEventListener('click', (e) => {
-    e.preventDefault();
-    startJuliaCall().catch(err => {
-      console.error(err);
-      alert('Could not start the live demo. Check console/network logs.');
-    });
-  });
-</script>
+        // Create modal UI
+        showModal();
+        client = new RetellWebClient();
+
+        // Useful diagnostics in console
+        client.on?.('status',  (s) => console.log('[retell:status]', s));
+        client.on?.('error',   (e) => console.error('[retell:error]', e));
+        client.on?.('call_started', () => console.log('[retell] call started'));
+        client.on?.('call_ended',   hideModal);
+        client.on?.('call-ended',   hideModal); // some builds use dash
+
+        // Mount UI inside our modal and theme it
+        await client.createCall({ container: root, theme: 'dark' });
+
+        // Get fresh access token from your server
+        const resp = await fetch('/api/retell/create-web-call', { method: 'POST' });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data?.access_token) {
+          const msg = data?.error || `Token endpoint bad response (${resp.status})`;
+          throw new Error(msg);
+        }
+
+        // Start the call
+        await client.startCall({ accessToken: data.access_token });
+      } catch (err) {
+        console.error('[live-demo]', err);
+        alert(`Could not start the live demo:\n${err.message || err}`);
+        hideModal();
+      }
+    }
+
+    liveBtn?.addEventListener('click', (e) => { e.preventDefault(); startLiveDemo(); });
+  </script>
+</body>
+</html>

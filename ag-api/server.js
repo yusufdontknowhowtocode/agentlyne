@@ -372,45 +372,45 @@ If anything changes, just reply to this email.
 /* ------------------------------------------------------------------ */
 /* Retell: mint Web Call token (used by the website modal)            */
 /* ------------------------------------------------------------------ */
-// === /api/retell/token ===
-// === /api/retell/token ===
-// Mints a web-call access token for the website demo
-// === /api/retell/token (Retell v2) ===
-app.post('/api/retell/token', async (req, res) => {
+// Handler that calls Retell v2 create-web-call and returns just { access_token }
+async function handleCreateWebCall(_req, res) {
   try {
-    const r = await fetch('https://api.retellai.com/v2/create-web-call', {
+    const apiKey = process.env.RETELL_API_KEY;
+    const agentId = process.env.RETELL_AGENT_ID;
+
+    if (!apiKey || !agentId) {
+      return res.status(500).json({ error: 'Missing RETELL_API_KEY or RETELL_AGENT_ID' });
+    }
+
+    const resp = await fetch('https://api.retellai.com/v2/create-web-call', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.RETELL_API_KEY}`, // keep the "key_..." prefix
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        agent_id: process.env.RETELL_AGENT_ID, // full ag-... string
-      }),
+      body: JSON.stringify({ agent_id: agentId }),
     });
 
-    const text = await r.text();
-    if (!r.ok) {
-      console.error('retell token error:', r.status, text);
-      return res.status(r.status).json({ ok: false, error: 'retell-token-failed', status: r.status });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data?.access_token) {
+      console.error('Retell create-web-call failed:', resp.status, data);
+      return res.status(500).json({
+        error: data?.error || `Retell returned ${resp.status}`,
+        details: data,
+      });
     }
 
-    let data;
-    try { data = JSON.parse(text); } catch (e) {
-      console.error('retell token parse error:', e, text);
-      return res.status(502).json({ ok: false, error: 'bad-retell-response' });
-    }
-
-    // v2 returns { call_id, access_token }
-    return res.json({ ok: true, accessToken: data.access_token, callId: data.call_id });
+    return res.json({ access_token: data.access_token });
   } catch (err) {
-    console.error('retell token error:', err);
-    return res.status(500).json({ ok: false, error: 'token_error' });
+    console.error('Retell token route error:', err);
+    return res.status(500).json({ error: String(err) });
   }
-});
+}
 
-
-
+// New path used by the site
+app.post('/api/retell/create-web-call', handleCreateWebCall);
+// Back-compat alias if anything still calls /api/retell/token
+app.post('/api/retell/token', handleCreateWebCall);
 
 /* ------------------------------------------------------------------ */
 /* Retell: "book_demo" webhook (called by your Custom Function)       */
