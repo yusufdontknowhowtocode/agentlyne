@@ -411,15 +411,28 @@
 
   <script src="https://cdn.retellai.com/webclient/retell-webclient.umd.js"></script>
 <script>
-  async function startJuliaCall() {
-    const r = await fetch('/api/retell/token', { method: 'POST' });
-    if (!r.ok) throw new Error('Token fetch failed');
-    const { token } = await r.json(); // our server returns { token, call_id }
+  const modal = document.getElementById('retell-modal');
+  const root  = document.getElementById('retell-root');
+  const closeBtn = document.getElementById('retell-close');
 
-    // Ask mic permission then start the call
-    const client = new window.RetellWebClient();
-    await navigator.mediaDevices.getUserMedia({ audio: true });
-    await client.startCall({ accessToken: token }); // uses access_token from v2
+  function showModal(){ modal.style.display = 'flex'; }
+  function hideModal(){ modal.style.display = 'none'; root.innerHTML = ''; }
+  closeBtn.addEventListener('click', hideModal);
+
+  async function startJuliaCall() {
+    // 1) ask your server for an accessToken (v2)
+    const r = await fetch('/api/retell/token', { method: 'POST' });
+    if (!r.ok) throw new Error('token endpoint failed');
+    const { ok, accessToken } = await r.json();
+    if (!ok || !accessToken) throw new Error('no accessToken');
+
+    // 2) mount client & start call with the accessToken
+    showModal();
+    const client = new RetellWebClient();
+    client.mount(root);
+    await client.startCall({ accessToken });
+
+    client.on('call-ended', hideModal);
   }
 
   document.getElementById('live-demo').addEventListener('click', (e) => {
@@ -430,6 +443,3 @@
     });
   });
 </script>
-
-</body>
-</html>
