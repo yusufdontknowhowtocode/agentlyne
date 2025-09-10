@@ -76,7 +76,6 @@ if (DB_URL) {
 
 /* ---------- schema / migration helpers ---------- */
 async function ensureSchema() {
-  // Create superset schema. (Harmless if columns already exist.)
   const createSql = `
   CREATE TABLE IF NOT EXISTS bookings (
     id            BIGSERIAL PRIMARY KEY,
@@ -101,7 +100,6 @@ async function ensureSchema() {
   );`;
   try {
     await pool.query(createSql);
-    // Make sure earlier NOT NULLs don't block inserts
     try { await pool.query(`ALTER TABLE bookings ALTER COLUMN name DROP NOT NULL;`); } catch {}
     try { await pool.query(`ALTER TABLE bookings ALTER COLUMN start_utc DROP NOT NULL;`); } catch {}
     console.log('DB schema ready');
@@ -118,12 +116,12 @@ const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecureEnv = String(process.env.SMTP_SECURE || '').toLowerCase();
 const smtpSecure = smtpSecureEnv
   ? ['1', 'true', 'yes', 'on'].includes(smtpSecureEnv)
-  : smtpPort === 465; // infer if not provided
+  : smtpPort === 465;
 
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,           // e.g. smtp.mailgun.org / smtp.gmail.com
-  port: smtpPort,                        // 587 or 465
-  secure: smtpSecure,                    // true only for 465
+  host: process.env.SMTP_HOST,
+  port: smtpPort,
+  secure: smtpSecure,
   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   tls: { minVersion: 'TLSv1.2' },
   pool: true
@@ -148,7 +146,6 @@ function pick(obj, keys, def = '') {
   return def;
 }
 
-/** get GMT offset minutes for a timezone at the given epoch ms */
 function tzOffsetMinutesAt(tz, epochMs) {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -158,7 +155,6 @@ function tzOffsetMinutesAt(tz, epochMs) {
       hour12: false
     }).formatToParts(new Date(epochMs));
     const name = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT';
-    // e.g. "GMT-4" or "GMT+05:30"
     const m = name.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/);
     if (!m) return 0;
     const sign = m[1].startsWith('-') ? -1 : 1;
@@ -170,16 +166,14 @@ function tzOffsetMinutesAt(tz, epochMs) {
   }
 }
 
-/** Convert a provided local date+time in tz to an ISO UTC string */
 function zonedToUtcISO(dateStr, timeStr, tz) {
   if (!dateStr || !timeStr || !tz) return null;
   try {
     const [y, m, d] = dateStr.split('-').map(Number);
     const [H, M]   = timeStr.split(':').map(Number);
-    // naive UTC for that wall-clock
     const naiveUTC = Date.UTC(y, (m ?? 1) - 1, d ?? 1, H ?? 0, M ?? 0, 0, 0);
     const offMin   = tzOffsetMinutesAt(tz, naiveUTC);
-    const finalMs  = naiveUTC - offMin * 60 * 1000; // shift to true UTC
+    const finalMs  = naiveUTC - offMin * 60 * 1000;
     return new Date(finalMs).toISOString();
   } catch {
     return null;
@@ -296,11 +290,9 @@ app.post('/api/book', async (req, res) => {
       });
     }
 
-    // Compute UTC start/end
     const startISO = zonedToUtcISO(date, time, timeZone || 'UTC');
     const endISO   = startISO ? new Date(new Date(startISO).getTime() + duration * 60000).toISOString() : null;
 
-    // Save to DB (best effort, but should succeed now)
     try {
       await pool.query(
         `INSERT INTO bookings
@@ -309,13 +301,13 @@ app.post('/api/book', async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           fullName,
-          fullName,               // name (alias kept for legacy)
+          fullName,
           email,
           phone,
           company,
           notes || null,
           timeZone || null,
-          startISO,               // may be null; column allows null
+          startISO,
           endISO,
           duration,
           source,
@@ -326,10 +318,8 @@ app.post('/api/book', async (req, res) => {
       console.log('book db insert: ok');
     } catch (e) {
       console.error('book db insert failed:', e?.message);
-      // keep going; email still gets sent
     }
 
-    // Internal notification
     const salesText = `
 New booking request
 
@@ -345,17 +335,15 @@ Length:  ${duration} minutes
 Notes:
 ${(notes || '').trim() || '-'}
 `;
-    const salesInfo = await transporter.sendMail({
+    await transporter.sendMail({
       from: FROM_EMAIL,
       to: SALES_EMAIL,
       replyTo: email,
       subject: `New booking — ${fullName} — ${date} ${time}`,
       text: salesText
     });
-    console.log('booking->sales msg id:', salesInfo.messageId);
 
-    // Auto-confirmation to submitter
-    const ackInfo = await transporter.sendMail({
+    await transporter.sendMail({
       from: FROM_EMAIL,
       to: email,
       subject: `We received your request — ${date} ${time}`,
@@ -373,7 +361,6 @@ If anything changes, just reply to this email.
 
 — Team Agentlyne`
     });
-    console.log('booking->ack msg id:', ackInfo.messageId);
 
     res.json({ ok: true });
   } catch (err) {
@@ -381,61 +368,62 @@ If anything changes, just reply to this email.
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
+
 /* ------------------------------------------------------------------ */
 /* Retell: mint Web Call token (used by the website modal)            */
 /* ------------------------------------------------------------------ */
-// 🔧 FIX: use api.retellai.com (not api.retell.ai)
-// Mint a Retell web-call token (used by the website modal)
-// === /api/retell/token ===
 app.post('/api/retell/token', async (req, res) => {
+  const API_KEY = (process.env.RETELL_API_KEY || '').trim();
+  const AGENT_ID = (process.env.RETELL_AGENT_ID || '').trim();
+
+  if (!API_KEY || !AGENT_ID) {
+    return res.status(500).json({ ok: false, error: 'RETELL env vars missing' });
+  }
+
   try {
     const r = await fetch('https://api.retellai.com/v1/web-call-tokens', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+        Authorization: `Bearer ${API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        agent_id: process.env.RETELL_AGENT_ID, // e.g. ag-112
+        agent_id: AGENT_ID,
         // metadata: { page: req.headers.referer } // optional
       }),
     });
 
-    // Helpful diagnostics if the API ever returns non-JSON or an error
     const text = await r.text();
     if (!r.ok) {
       console.error('retell token error:', r.status, text);
-      return res.status(r.status).send(text);
+      return res.status(502).json({ ok: false, error: 'retell-token-failed', status: r.status });
     }
+
     let data;
     try { data = JSON.parse(text); }
     catch (e) {
       console.error('retell token parse error:', e, text);
-      return res.status(502).json({ error: 'Bad token response' });
+      return res.status(502).json({ ok: false, error: 'bad-token-response' });
     }
-    res.json(data); // { token, expires_at }
+
+    res.json(data); // { token, expires_at, ... }
   } catch (err) {
     console.error('retell token error:', err);
-    res.status(500).json({ error: 'token_error' });
+    res.status(500).json({ ok: false, error: 'token-error' });
   }
 });
-
-
-
 
 /* ------------------------------------------------------------------ */
 /* Retell: "book_demo" webhook (called by your Custom Function)       */
 /* ------------------------------------------------------------------ */
 app.post('/api/retell/book_demo', async (req, res) => {
   try {
-    // Retell "book_demo" sends: { name, email, phone, company, notes }
     const { name, email, phone, company = '', notes = '' } = req.body || {};
 
     if (!name || !email || !phone) {
       return res.status(400).json({ ok: false, error: 'missing_required_fields' });
     }
 
-    // Save lightweight lead in your existing "bookings" table
     try {
       await pool.query(
         `INSERT INTO bookings
@@ -446,10 +434,8 @@ app.post('/api/retell/book_demo', async (req, res) => {
       console.log('retell lead saved → bookings');
     } catch (e) {
       console.warn('retell lead save failed:', e?.message);
-      // continue—emails can still go out
     }
 
-    // Notify sales & ack caller (reuses your existing transporter)
     try {
       const summary = `
 New Retell call lead
@@ -489,7 +475,6 @@ We’ll follow up shortly with scheduling details.
       console.warn('retell mail send failed:', e?.message);
     }
 
-    // Tell Retell everything went fine so your "Booking-Confirm" state runs
     res.json({ ok: true });
   } catch (err) {
     console.error('retell book_demo error:', err);
@@ -502,4 +487,3 @@ We’ll follow up shortly with scheduling details.
 /* ------------------------------------------------------------------ */
 const PORT = process.env.PORT || 10000; // Render sets PORT
 app.listen(PORT, () => console.log(`API listening on :${PORT}`));
-``
