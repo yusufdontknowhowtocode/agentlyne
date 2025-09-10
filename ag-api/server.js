@@ -373,7 +373,7 @@ If anything changes, just reply to this email.
 /* Retell: mint Web Call token (used by the website modal)            */
 /* ------------------------------------------------------------------ */
 // === /api/retell/token ===
-a// === /api/retell/token ===
+// === /api/retell/token ===
 // Mints a web-call access token for the website demo
 app.post('/api/retell/token', async (req, res) => {
   try {
