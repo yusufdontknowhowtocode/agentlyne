@@ -64,6 +64,53 @@ app.get('/api/static-check', async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Retell Web SDK proxy (public, cached; works for all visitors)      */
+/* ------------------------------------------------------------------ */
+const RETELL_SDK_SOURCES = [
+  'https://cdn.retellai.com/webclient/retell-webclient.umd.js',
+  'https://cdn.jsdelivr.net/npm/@retellai/web-sdk@latest/dist/bundle.umd.js',
+  'https://unpkg.com/@retellai/web-sdk@latest/dist/bundle.umd.js'
+];
+
+// simple in-memory cache (clears on deploy/restart)
+let sdkCache = null;        // Buffer
+let sdkCacheTime = 0;       // epoch ms
+const SDK_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
+
+app.get('/vendor/retell-web-sdk.umd.js', async (req, res) => {
+  try {
+    // serve cache if fresh
+    if (sdkCache && (Date.now() - sdkCacheTime) < SDK_TTL_MS) {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // tell browsers to cache 1 day
+      return res.end(sdkCache);
+    }
+
+    // fetch from first working source
+    for (const url of RETELL_SDK_SOURCES) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) continue;
+        const buf = Buffer.from(await r.arrayBuffer());
+        // sanity check: should be > 10KB (avoid “Failed to fetch” stubs)
+        if (buf.length < 10_000) continue;
+
+        sdkCache = buf;
+        sdkCacheTime = Date.now();
+
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.end(buf);
+      } catch { /* try next source */ }
+    }
+
+    res.status(502).type('text/javascript').send('// Failed to fetch Retell SDK from all sources');
+  } catch (e) {
+    res.status(500).type('text/javascript').send(`// SDK proxy error: ${String(e)}`);
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* Database (Supabase / Postgres) — force IPv4 + SNI                  */
 /* ------------------------------------------------------------------ */
 const DB_URL = process.env.DATABASE_URL;
