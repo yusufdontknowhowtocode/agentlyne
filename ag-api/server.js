@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dns from 'dns';
 import { promises as dnsPromises } from 'dns';
+import fs from 'fs/promises';
 
 // Prefer IPv4 on platforms without IPv6 (avoids ENETUNREACH)
 try { dns.setDefaultResultOrder('ipv4first'); } catch {}
@@ -26,11 +27,41 @@ app.use(express.urlencoded({ extended: true }));
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-// Serve the static site (ag-api/public)
-app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
+/* ------------------------------------------------------------------ */
+/* Static site                                                        */
+/* ------------------------------------------------------------------ */
+// Cache-bust rules: cache long for /vendor assets, short for others (not HTML)
+app.use(express.static(PUBLIC_DIR, {
+  extensions: ['html'],
+  setHeaders: (res, filePath) => {
+    const ext = path.extname(filePath).toLowerCase();
+    if (filePath.includes(`${path.sep}vendor${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (ext && ext !== '.html') {
+      res.setHeader('Cache-Control', 'public, max-age=300');
+    }
+  }
+}));
 
 // Be explicit for "/" just in case
 app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+
+// Debug helper: check if a static file exists under PUBLIC_DIR
+app.get('/api/static-check', async (req, res) => {
+  try {
+    const p = String(req.query.path || '');
+    // prevent path traversal
+    const safe = path.normalize(p).replace(/^(\.\.[/\\])+/, '');
+    const abs = path.join(PUBLIC_DIR, safe);
+    // ensure the resolved path is still under PUBLIC_DIR
+    if (!abs.startsWith(PUBLIC_DIR)) return res.status(400).json({ ok: false, error: 'bad path' });
+    let exists = false;
+    try { await fs.access(abs); exists = true; } catch {}
+    res.json({ ok: true, exists, rel: safe, abs });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /* Database (Supabase / Postgres) — force IPv4 + SNI                  */
@@ -372,6 +403,7 @@ If anything changes, just reply to this email.
 /* ------------------------------------------------------------------ */
 /* Retell: mint Web Call token (used by the website modal)            */
 /* ------------------------------------------------------------------ */
+
 // Handler that calls Retell v2 create-web-call and returns just { access_token }
 async function handleCreateWebCall(_req, res) {
   try {
