@@ -28,6 +28,66 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 /* ------------------------------------------------------------------ */
+/* Retell Web SDK proxy (first-party, cached)                         */
+/*  IMPORTANT: this route is BEFORE express.static!                   */
+/* ------------------------------------------------------------------ */
+const RETELL_SOURCES = [
+  'https://cdn.retellai.com/webclient/retell-webclient.umd.js',
+  'https://cdn.jsdelivr.net/npm/@retellai/web-sdk@latest/dist/bundle.umd.js',
+  'https://unpkg.com/@retellai/web-sdk@latest/dist/bundle.umd.js'
+];
+const RETELL_LOCAL = path.join(PUBLIC_DIR, 'vendor', 'retell-web-sdk.umd.js');
+
+app.get('/vendor/retell-web-sdk.umd.js', async (req, res) => {
+  res.type('application/javascript; charset=utf-8');
+
+  const wantFresh = 'fresh' in req.query;
+
+  // 1) Serve persisted cache from disk if present & not forcing fresh
+  if (!wantFresh) {
+    try {
+      const buf = await fs.readFile(RETELL_LOCAL);
+      if (buf.length > 50_000) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        return res.send(buf);
+      }
+    } catch {}
+  }
+
+  // 2) Try CDNs (primary -> fallbacks)
+  let lastErr;
+  for (const url of RETELL_SOURCES) {
+    try {
+      const r = await fetch(url, { redirect: 'follow' });
+      if (!r.ok) { lastErr = new Error(`HTTP ${r.status}`); continue; }
+      const js = await r.text();
+      if (js.length < 50_000) { lastErr = new Error('too small'); continue; }
+
+      // Persist to disk for future requests/restarts
+      await fs.mkdir(path.dirname(RETELL_LOCAL), { recursive: true });
+      await fs.writeFile(RETELL_LOCAL, js);
+
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.send(js);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  // 3) If all CDNs failed, try whatever is on disk (even small)
+  try {
+    const buf = await fs.readFile(RETELL_LOCAL);
+    res.setHeader('Cache-Control', 'public, max-age=600');
+    return res.send(buf);
+  } catch {}
+
+  // 4) Soft error
+  return res.send(
+    `console.error("Retell SDK unavailable:", ${JSON.stringify(String(lastErr || 'unknown'))});`
+  );
+});
+
+/* ------------------------------------------------------------------ */
 /* Static site                                                        */
 /* ------------------------------------------------------------------ */
 // Cache-bust rules: cache long for /vendor assets, short for others (not HTML)
@@ -50,63 +110,14 @@ app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 app.get('/api/static-check', async (req, res) => {
   try {
     const p = String(req.query.path || '');
-    // prevent path traversal
     const safe = path.normalize(p).replace(/^(\.\.[/\\])+/, '');
     const abs = path.join(PUBLIC_DIR, safe);
-    // ensure the resolved path is still under PUBLIC_DIR
     if (!abs.startsWith(PUBLIC_DIR)) return res.status(400).json({ ok: false, error: 'bad path' });
     let exists = false;
     try { await fs.access(abs); exists = true; } catch {}
     res.json({ ok: true, exists, rel: safe, abs });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-/* ------------------------------------------------------------------ */
-/* Retell Web SDK proxy (public, cached; works for all visitors)      */
-/* ------------------------------------------------------------------ */
-const RETELL_SDK_SOURCES = [
-  'https://cdn.retellai.com/webclient/retell-webclient.umd.js',
-  'https://cdn.jsdelivr.net/npm/@retellai/web-sdk@latest/dist/bundle.umd.js',
-  'https://unpkg.com/@retellai/web-sdk@latest/dist/bundle.umd.js'
-];
-
-// simple in-memory cache (clears on deploy/restart)
-let sdkCache = null;        // Buffer
-let sdkCacheTime = 0;       // epoch ms
-const SDK_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
-
-app.get('/vendor/retell-web-sdk.umd.js', async (req, res) => {
-  try {
-    // serve cache if fresh
-    if (sdkCache && (Date.now() - sdkCacheTime) < SDK_TTL_MS) {
-      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=86400'); // tell browsers to cache 1 day
-      return res.end(sdkCache);
-    }
-
-    // fetch from first working source
-    for (const url of RETELL_SDK_SOURCES) {
-      try {
-        const r = await fetch(url);
-        if (!r.ok) continue;
-        const buf = Buffer.from(await r.arrayBuffer());
-        // sanity check: should be > 10KB (avoid “Failed to fetch” stubs)
-        if (buf.length < 10_000) continue;
-
-        sdkCache = buf;
-        sdkCacheTime = Date.now();
-
-        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-        return res.end(buf);
-      } catch { /* try next source */ }
-    }
-
-    res.status(502).type('text/javascript').send('// Failed to fetch Retell SDK from all sources');
-  } catch (e) {
-    res.status(500).type('text/javascript').send(`// SDK proxy error: ${String(e)}`);
   }
 });
 
@@ -450,8 +461,6 @@ If anything changes, just reply to this email.
 /* ------------------------------------------------------------------ */
 /* Retell: mint Web Call token (used by the website modal)            */
 /* ------------------------------------------------------------------ */
-
-// Handler that calls Retell v2 create-web-call and returns just { access_token }
 async function handleCreateWebCall(_req, res) {
   try {
     const apiKey = process.env.RETELL_API_KEY;
@@ -485,10 +494,7 @@ async function handleCreateWebCall(_req, res) {
     return res.status(500).json({ error: String(err) });
   }
 }
-
-// New path used by the site
 app.post('/api/retell/create-web-call', handleCreateWebCall);
-// Back-compat alias if anything still calls /api/retell/token
 app.post('/api/retell/token', handleCreateWebCall);
 
 /* ------------------------------------------------------------------ */

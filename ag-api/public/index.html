@@ -400,14 +400,12 @@
     </div>
   </div>
 
-  <!-- Live Demo controller (self-hosted SDK + fallbacks) -->
+  <!-- Live Demo controller -->
   <script>
-    // Elements
     const modal = document.getElementById('retell-modal');
     const root  = document.getElementById('retell-root');
     const close = document.getElementById('retell-close');
     const btn   = document.getElementById('live-demo');
-
     let client = null;
 
     const showModal = () => { modal.style.display = 'flex'; document.body.classList.add('modal-open'); };
@@ -420,11 +418,8 @@
     };
     close?.addEventListener('click', hideModal);
 
-    // Where to load the SDK from: local first, then CDNs
     const SDK_SOURCES = [
-      '/vendor/retell-web-sdk.umd.js',
-      'https://cdn.jsdelivr.net/npm/@retellai/web-sdk@latest/dist/bundle.umd.js',
-      'https://unpkg.com/@retellai/web-sdk@latest/dist/bundle.umd.js',
+      '/vendor/retell-web-sdk.umd.js', // served by our server (proxy+cache)
       'https://cdn.retellai.com/webclient/retell-webclient.umd.js'
     ];
 
@@ -450,7 +445,7 @@
           console.log('[retell] loading', url);
           await loadScript(url);
           if (getCtor()) return;
-        } catch (e) { lastErr = e; console.warn('[retell] failed', url); }
+        } catch (e) { lastErr = e; console.warn('[retell] failed', url, e?.message||e); }
       }
       throw lastErr || new Error('Retell SDK failed to load');
     }
@@ -461,30 +456,21 @@
         const RetellCtor = getCtor();
         if (!RetellCtor) throw new Error('Retell SDK not available');
 
-        // Mic permission first
         await navigator.mediaDevices.getUserMedia({ audio: true });
 
         showModal();
         client = new RetellCtor();
-
-        // Diagnostics
-        client.on?.('status', s => console.log('[retell:status]', s));
-        client.on?.('error',  e => console.error('[retell:error]', e));
         client.on?.('call_ended', hideModal);
         client.on?.('call-ended', hideModal);
+        client.on?.('error', e => console.error('[retell:error]', e));
 
-        // Build UI
         await client.createCall({ container: root, theme: 'dark' });
 
-        // Get token from your server
         const r = await fetch('/api/retell/create-web-call', { method: 'POST' });
         const data = await r.json().catch(() => ({}));
         if (!r.ok || !data?.access_token) {
-          const msg = data?.error || `Token endpoint bad response (${r.status})`;
-          throw new Error(msg);
+          throw new Error(data?.error || `Token endpoint bad response (${r.status})`);
         }
-
-        // Start the call
         await client.startCall({ accessToken: data.access_token });
       } catch (err) {
         console.error('[live-demo]', err);
