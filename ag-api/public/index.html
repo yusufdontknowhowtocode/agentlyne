@@ -31,43 +31,6 @@
   <!-- Site config + CSS -->
   <script src="/config.js"></script>
   <link rel="stylesheet" href="style.css" />
-
-  <!-- Button fixes (override anything from style.css) -->
-  <style>
-    :root{ --btn-h:44px; }
-    @media (min-width:640px){ :root{ --btn-h:48px; } }
-
-    /* Unified pill buttons */
-    .btn{
-      display:inline-flex; align-items:center; justify-content:center;
-      padding:.625rem 1rem; height:var(--btn-h); min-width:44px;
-      border-radius:9999px; border:1px solid transparent;
-      font-weight:600; line-height:1; text-decoration:none;
-      white-space:nowrap; /* prevent wrapping to a circle */
-    }
-    .btn-primary{
-      background:linear-gradient(135deg,#06b6d4,#0284c7);
-      color:#fff; border-color:transparent;
-    }
-    .btn-primary:hover{ filter:brightness(1.08); }
-    .btn-outline{
-      background:transparent; color:#e2e8f0;
-      border-color:rgba(255,255,255,.30);
-    }
-    .btn-outline:hover{ background:rgba(255,255,255,.06); }
-
-    /* Make absolutely sure header CTAs don't wrap or shrink weirdly */
-    header nav{ white-space:nowrap; }
-    header nav a.btn{ height:var(--btn-h); width:auto; }
-  </style>
-
-  <!-- Minimal modal CSS -->
-  <style>
-    .retell-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.7);backdrop-filter:blur(6px);z-index:1000}
-    .retell-card{width:min(92vw,420px);height:min(88vh,560px);background:#0b1020;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden}
-    .retell-close{position:absolute;top:8px;right:10px;background:transparent;border:0;color:#fff;font-size:24px;cursor:pointer;z-index:1}
-    body.modal-open{overflow:hidden}
-  </style>
 </head>
 <body class="font-sans">
   <!-- background orbs + canvas (parallax) -->
@@ -87,7 +50,8 @@
           </span>
           <strong class="text-slate-100">Agentlyne</strong>
         </a>
-        <nav class="flex items-center gap-3">
+        <!-- gap tightened: gap-3 -> gap-2 (CSS also applies compact sizing) -->
+        <nav class="flex items-center gap-2">
           <a href="pricing.html" class="btn btn-outline">Pricing</a>
           <a href="book.html" class="btn btn-primary">Book a Call</a>
         </nav>

@@ -25,6 +25,14 @@
   --brand-500:#0ea5e9;
   --brand-600:#0284c7;
 
+  /* Button sizing (global) */
+  --btn-h: 48px;
+
+  /* Compact header-nav button sizing (only in header) */
+  --nav-btn-h: 40px;
+  --nav-btn-fs: .95rem;
+  --nav-btn-px: .9rem;
+
   /* Subtle pattern palette (calm + distinct from vocalchat) */
   --p-ink: #0f172a;
   --p-a:   #7cb8ff;  /* soft cornflower */
@@ -36,6 +44,14 @@
   --bg-shift: 0px;  /* stars canvas */
   --orb-shift:0px;  /* glow orbs */
   --fg-shift: 0px;  /* hero foreground (.stage) */
+}
+@media (min-width:640px){
+  :root{
+    --btn-h: 48px;           /* keep hero buttons comfy */
+    --nav-btn-h: 44px;       /* header gets a gentle bump on sm+ */
+    --nav-btn-fs: 1rem;
+    --nav-btn-px: 1rem;
+  }
 }
 
 html,body{height:100%}
@@ -70,10 +86,23 @@ body{
 }
 
 /* ---------- Buttons ---------- */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:9999px;padding:.75rem 1.5rem;font-weight:600;transition:all .2s ease;backdrop-filter: blur(12px)}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
+  border-radius:9999px;padding:.75rem 1.5rem;font-weight:600;transition:all .2s ease;
+  backdrop-filter: blur(12px);
+  height:var(--btn-h); line-height:1; white-space:nowrap; min-width:44px;
+}
 .btn-primary{background:linear-gradient(135deg, var(--brand-500), var(--brand-600));color:#fff;box-shadow:0 8px 32px rgba(14,165,233,.3)}
 .btn-outline{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.05);color:#e2e8f0}
 .btn:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(14,165,233,.4)}
+
+/* Header nav: compact buttons so they fit inside the rounded shell */
+header nav{ gap:.5rem; white-space:nowrap; }
+header nav .btn{
+  height:var(--nav-btn-h);
+  padding:.5rem var(--nav-btn-px);
+  font-size:var(--nav-btn-fs);
+}
 
 /* ---------- Hero ---------- */
 .hero{ padding-top:6vh; padding-bottom:4vh; position:relative; }
