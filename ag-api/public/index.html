@@ -32,8 +32,34 @@
   <script src="/config.js"></script>
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Preload our first-party Retell SDK proxy (no external CDNs) -->
-  <script defer src="/sdk/retell.v1.js?v=3"></script>
+  <!-- Button fixes (override anything from style.css) -->
+  <style>
+    :root{ --btn-h:44px; }
+    @media (min-width:640px){ :root{ --btn-h:48px; } }
+
+    /* Unified pill buttons */
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:.625rem 1rem; height:var(--btn-h); min-width:44px;
+      border-radius:9999px; border:1px solid transparent;
+      font-weight:600; line-height:1; text-decoration:none;
+      white-space:nowrap; /* prevent wrapping to a circle */
+    }
+    .btn-primary{
+      background:linear-gradient(135deg,#06b6d4,#0284c7);
+      color:#fff; border-color:transparent;
+    }
+    .btn-primary:hover{ filter:brightness(1.08); }
+    .btn-outline{
+      background:transparent; color:#e2e8f0;
+      border-color:rgba(255,255,255,.30);
+    }
+    .btn-outline:hover{ background:rgba(255,255,255,.06); }
+
+    /* Make absolutely sure header CTAs don't wrap or shrink weirdly */
+    header nav{ white-space:nowrap; }
+    header nav a.btn{ height:var(--btn-h); width:auto; }
+  </style>
 
   <!-- Minimal modal CSS -->
   <style>
@@ -403,7 +429,10 @@
     </div>
   </div>
 
-  <!-- Live Demo controller (loads SDK only from our proxy) -->
+  <!-- Preload our first-party Retell SDK proxy (no external CDNs) -->
+  <script defer src="/sdk/retell.v1.js?v=3"></script>
+
+  <!-- Live Demo controller -->
   <script>
     const modal = document.getElementById('retell-modal');
     const root  = document.getElementById('retell-root');
@@ -440,8 +469,8 @@
     async function ensureSDK() {
       if (getCtor()) return;
       const candidates = [
-        '/sdk/retell.v1.js?v=' + Date.now(),      // cache-bust our proxy
-        '/sdk/retell.v1.js?fresh=1&v=' + Date.now() // force server to refetch from CDNs
+        '/sdk/retell.v1.js?v=' + Date.now(),
+        '/sdk/retell.v1.js?fresh=1&v=' + Date.now()
       ];
       let lastErr;
       for (const url of candidates) {
