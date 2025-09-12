@@ -29,108 +29,91 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 
 /* ------------------------------------------------------------------ */
 /* Retell Web SDK proxy (first-party, cached)                         */
-/*  IMPORTANT: this route is BEFORE express.static!                   */
+/*  IMPORTANT: these routes are BEFORE express.static!                */
 /* ------------------------------------------------------------------ */
-const RETELL_SOURCES = [
-  'https://cdn.retellai.com/webclient/retell-webclient.umd.js',
-  'https://cdn.jsdelivr.net/npm/@retellai/web-sdk@latest/dist/bundle.umd.js',
-  'https://unpkg.com/@retellai/web-sdk@latest/dist/bundle.umd.js'
-];
+
+// Where we'll persist a copy on disk (so it works even if CDNs are down)
 const RETELL_LOCAL = path.join(PUBLIC_DIR, 'vendor', 'retell-web-sdk.umd.js');
 
-app.get('/vendor/retell-web-sdk.umd.js', async (req, res) => {
-  res.type('application/javascript; charset=utf-8');
+// Known public sources (official first; others only if they become available)
+const SDK_SOURCES = [
+  'https://cdn.retellai.com/webclient/retell-webclient.umd.js',
+];
 
+// small in-memory cache to avoid disk reads on hot path
+let sdkMem = null;          // Buffer
+let sdkMemTime = 0;         // epoch ms
+const SDK_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
+
+async function serveRetellSdk(req, res) {
+  res.type('application/javascript; charset=utf-8');
   const wantFresh = 'fresh' in req.query;
 
-  // 1) Serve persisted cache from disk if present & not forcing fresh
+  // 1) In-memory cache (unless forcing fresh)
+  if (!wantFresh && sdkMem && (Date.now() - sdkMemTime) < SDK_TTL_MS) {
+    res.setHeader('X-Retell-Proxy', 'mem');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.end(sdkMem);
+  }
+
+  // 2) Disk cache (unless forcing fresh)
   if (!wantFresh) {
     try {
       const buf = await fs.readFile(RETELL_LOCAL);
       if (buf.length > 50_000) {
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        return res.send(buf);
+        sdkMem = buf; sdkMemTime = Date.now();
+        res.setHeader('X-Retell-Proxy', 'disk');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.end(buf);
       }
-    } catch {}
+    } catch {} // fall through
   }
 
-  // 2) Try CDNs (primary -> fallbacks)
+  // 3) Fetch from CDNs, persist to disk, cache in memory
   let lastErr;
-  for (const url of RETELL_SOURCES) {
+  for (const url of SDK_SOURCES) {
     try {
       const r = await fetch(url, { redirect: 'follow' });
       if (!r.ok) { lastErr = new Error(`HTTP ${r.status}`); continue; }
-      const js = await r.text();
-      if (js.length < 50_000) { lastErr = new Error('too small'); continue; }
+      const buf = Buffer.from(await r.arrayBuffer());
+      if (buf.length < 50_000) { lastErr = new Error('content-too-small'); continue; }
 
-      // Persist to disk for future requests/restarts
       await fs.mkdir(path.dirname(RETELL_LOCAL), { recursive: true });
-      await fs.writeFile(RETELL_LOCAL, js);
+      await fs.writeFile(RETELL_LOCAL, buf);
 
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      return res.send(js);
+      sdkMem = buf; sdkMemTime = Date.now();
+      res.setHeader('X-Retell-Proxy', 'fetched');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.end(buf);
     } catch (e) {
       lastErr = e;
     }
   }
 
-  // 3) If all CDNs failed, try whatever is on disk (even small)
+  // 4) If fetching failed, try whatever is on disk (even if small)
   try {
     const buf = await fs.readFile(RETELL_LOCAL);
+    sdkMem = buf; sdkMemTime = Date.now();
+    res.setHeader('X-Retell-Proxy', 'disk-fallback');
     res.setHeader('Cache-Control', 'public, max-age=600');
-    return res.send(buf);
+    return res.end(buf);
   } catch {}
 
-  // 4) Soft error
+  // 5) Soft error (doesn't break page JS parsing)
+  res.setHeader('X-Retell-Proxy', 'failed');
   return res.send(
-    `console.error("Retell SDK unavailable:", ${JSON.stringify(String(lastErr || 'unknown'))});`
+    `console.error("Retell SDK unavailable");`
   );
-});
-// --- Retell Web SDK proxy (public; cached for all visitors) ---
-/* Retell SDK proxy – new unique path */
-const RETELL_SDK_SOURCES = [
-  'https://cdn.retellai.com/webclient/retell-webclient.umd.js',
-  'https://cdn.jsdelivr.net/npm/@retellai/web-sdk@latest/dist/bundle.umd.js',
-  'https://unpkg.com/@retellai/web-sdk@latest/dist/bundle.umd.js'
-];
+}
 
-let sdkCache = null, sdkCacheTime = 0;
-const SDK_TTL_MS = 24 * 60 * 60 * 1000;
-
-app.get('/sdk/retell.v1.js', async (_req, res) => {
-  try {
-    if (sdkCache && (Date.now() - sdkCacheTime) < SDK_TTL_MS) {
-      res.setHeader('X-Retell-Proxy', 'hit-cache');
-      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      return res.end(sdkCache);
-    }
-    for (const url of RETELL_SDK_SOURCES) {
-      try {
-        const r = await fetch(url);
-        if (!r.ok) continue;
-        const buf = Buffer.from(await r.arrayBuffer());
-        if (buf.length < 10000) continue;
-        sdkCache = buf; sdkCacheTime = Date.now();
-        res.setHeader('X-Retell-Proxy', 'fetched');
-        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-        return res.end(buf);
-      } catch {}
-    }
-    res.setHeader('X-Retell-Proxy', 'failed');
-    res.status(502).type('text/javascript').send('// Failed to fetch Retell SDK');
-  } catch (e) {
-    res.setHeader('X-Retell-Proxy', 'error');
-    res.status(500).type('text/javascript').send(`// SDK proxy error: ${String(e)}`);
-  }
-});
-
+// Serve under a stable path used by index.html
+app.get('/sdk/retell.v1.js', serveRetellSdk);
+// Back-compat alias (older code may reference this)
+app.get('/vendor/retell-web-sdk.umd.js', serveRetellSdk);
 
 /* ------------------------------------------------------------------ */
 /* Static site                                                        */
 /* ------------------------------------------------------------------ */
-// Cache-bust rules: cache long for /vendor assets, short for others (not HTML)
 app.use(express.static(PUBLIC_DIR, {
   extensions: ['html'],
   setHeaders: (res, filePath) => {
@@ -143,7 +126,6 @@ app.use(express.static(PUBLIC_DIR, {
   }
 }));
 
-// Be explicit for "/" just in case
 app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
 // Debug helper: check if a static file exists under PUBLIC_DIR
@@ -209,7 +191,6 @@ async function ensureSchema() {
   CREATE TABLE IF NOT EXISTS bookings (
     id            BIGSERIAL PRIMARY KEY,
     created_at    timestamptz DEFAULT now(),
-    /* legacy + new fields (we keep both "name" and "full_name") */
     name          text,
     full_name     text,
     email         text,
@@ -217,13 +198,10 @@ async function ensureSchema() {
     company       text,
     notes         text,
     timezone      text,
-    /* meeting times */
     start_utc     timestamptz,
     end_utc       timestamptz,
     duration_min  integer,
-    /* misc */
     source        text,
-    /* form echo */
     date          date,
     "time"        text
   );`;
@@ -267,14 +245,12 @@ transporter.verify()
 /* Utils                                                              */
 /* ------------------------------------------------------------------ */
 const clean = (s) => String(s ?? '').replace(/[\r\n]+/g, ' ').trim();
-
 function pick(obj, keys, def = '') {
   for (const k of keys) {
     if (obj && obj[k] != null && String(obj[k]).trim() !== '') return String(obj[k]);
   }
   return def;
 }
-
 function tzOffsetMinutesAt(tz, epochMs) {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -294,7 +270,6 @@ function tzOffsetMinutesAt(tz, epochMs) {
     return 0;
   }
 }
-
 function zonedToUtcISO(dateStr, timeStr, tz) {
   if (!dateStr || !timeStr || !tz) return null;
   try {
@@ -590,7 +565,7 @@ ${(notes || '').trim() || '-'}
 Thanks for calling! We’ve got your info:
 - Phone: ${phone}
 - Company: ${company || '-'}
-
+ 
 We’ll follow up shortly with scheduling details.
 
 — Team Agentlyne`
