@@ -86,6 +86,41 @@ app.get('/vendor/retell-web-sdk.umd.js', async (req, res) => {
     `console.error("Retell SDK unavailable:", ${JSON.stringify(String(lastErr || 'unknown'))});`
   );
 });
+// --- Retell Web SDK proxy (public; cached for all visitors) ---
+const RETELL_SDK_SOURCES = [
+  'https://cdn.retellai.com/webclient/retell-webclient.umd.js',
+  'https://cdn.jsdelivr.net/npm/@retellai/web-sdk@latest/dist/bundle.umd.js',
+  'https://unpkg.com/@retellai/web-sdk@latest/dist/bundle.umd.js'
+];
+
+let sdkCache = null;
+let sdkCacheTime = 0;
+const SDK_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
+
+app.get('/vendor/retell-web-sdk.umd.js', async (_req, res) => {
+  try {
+    if (sdkCache && (Date.now() - sdkCacheTime) < SDK_TTL_MS) {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+      return res.end(sdkCache);
+    }
+    for (const url of RETELL_SDK_SOURCES) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) continue;
+        const buf = Buffer.from(await r.arrayBuffer());
+        if (buf.length < 10000) continue; // guard against stub responses
+        sdkCache = buf; sdkCacheTime = Date.now();
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+        return res.end(buf);
+      } catch { /* try next */ }
+    }
+    res.status(502).type('text/javascript').send('// Failed to fetch Retell SDK from all sources');
+  } catch (e) {
+    res.status(500).type('text/javascript').send(`// SDK proxy error: ${String(e)}`);
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /* Static site                                                        */
