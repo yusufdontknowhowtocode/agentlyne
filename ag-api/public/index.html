@@ -419,9 +419,11 @@
     close?.addEventListener('click', hideModal);
 
     const SDK_SOURCES = [
-      '/vendor/retell-web-sdk.umd.js', // served by our server (proxy+cache)
-      'https://cdn.retellai.com/webclient/retell-webclient.umd.js'
-    ];
+    '/sdk/retell.v1.js?v=1',             <!-- NEW unique URL -->
+    'https://cdn.jsdelivr.net/npm/@retellai/web-sdk@latest/dist/bundle.umd.js',
+    'https://unpkg.com/@retellai/web-sdk@latest/dist/bundle.umd.js',
+    'https://cdn.retellai.com/webclient/retell-webclient.umd.js'
+  ];
 
     function getCtor() {
       return window.RetellWebClient ||

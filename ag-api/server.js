@@ -87,21 +87,22 @@ app.get('/vendor/retell-web-sdk.umd.js', async (req, res) => {
   );
 });
 // --- Retell Web SDK proxy (public; cached for all visitors) ---
+/* Retell SDK proxy – new unique path */
 const RETELL_SDK_SOURCES = [
   'https://cdn.retellai.com/webclient/retell-webclient.umd.js',
   'https://cdn.jsdelivr.net/npm/@retellai/web-sdk@latest/dist/bundle.umd.js',
   'https://unpkg.com/@retellai/web-sdk@latest/dist/bundle.umd.js'
 ];
 
-let sdkCache = null;
-let sdkCacheTime = 0;
-const SDK_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
+let sdkCache = null, sdkCacheTime = 0;
+const SDK_TTL_MS = 24 * 60 * 60 * 1000;
 
-app.get('/vendor/retell-web-sdk.umd.js', async (_req, res) => {
+app.get('/sdk/retell.v1.js', async (_req, res) => {
   try {
     if (sdkCache && (Date.now() - sdkCacheTime) < SDK_TTL_MS) {
+      res.setHeader('X-Retell-Proxy', 'hit-cache');
       res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
       return res.end(sdkCache);
     }
     for (const url of RETELL_SDK_SOURCES) {
@@ -109,18 +110,22 @@ app.get('/vendor/retell-web-sdk.umd.js', async (_req, res) => {
         const r = await fetch(url);
         if (!r.ok) continue;
         const buf = Buffer.from(await r.arrayBuffer());
-        if (buf.length < 10000) continue; // guard against stub responses
+        if (buf.length < 10000) continue;
         sdkCache = buf; sdkCacheTime = Date.now();
+        res.setHeader('X-Retell-Proxy', 'fetched');
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-        res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
         return res.end(buf);
-      } catch { /* try next */ }
+      } catch {}
     }
-    res.status(502).type('text/javascript').send('// Failed to fetch Retell SDK from all sources');
+    res.setHeader('X-Retell-Proxy', 'failed');
+    res.status(502).type('text/javascript').send('// Failed to fetch Retell SDK');
   } catch (e) {
+    res.setHeader('X-Retell-Proxy', 'error');
     res.status(500).type('text/javascript').send(`// SDK proxy error: ${String(e)}`);
   }
 });
+
 
 /* ------------------------------------------------------------------ */
 /* Static site                                                        */
