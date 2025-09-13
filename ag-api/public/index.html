@@ -32,7 +32,10 @@
   <script src="/config.js"></script>
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Minimal modal CSS (kept here so it's guaranteed) -->
+  <!-- 🔒 Load vendored Retell SDK from same origin (no CDN/proxy) -->
+  <script defer src="/vendor/retell-client-js-sdk-2.0.7.umd.js"></script>
+
+  <!-- Minimal modal CSS (kept inline) -->
   <style>
     .retell-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.7);backdrop-filter:blur(6px);z-index:1000}
     .retell-card{width:min(92vw,420px);height:min(88vh,560px);background:#0b1020;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden}
@@ -400,7 +403,7 @@
     </div>
   </div>
 
-  <!-- Live Demo controller (loads SDK locally first; no ?fresh) -->
+  <!-- Live Demo controller (uses vendored SDK already loaded) -->
   <script>
     const modal = document.getElementById('retell-modal');
     const root  = document.getElementById('retell-root');
@@ -423,41 +426,13 @@
              (window.Retell && (window.Retell.RetellWebClient || window.Retell.WebClient)) ||
              null;
     }
-    function loadScript(src) {
-      return new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = src; s.async = true; s.crossOrigin = 'anonymous'; s.referrerPolicy = 'no-referrer';
-        s.onload = () => resolve(src);
-        s.onerror = () => reject(new Error('load error: ' + src));
-        document.head.appendChild(s);
-      });
-    }
-    async function ensureSDK() {
-      if (getCtor()) return;
-
-      const candidates = [
-        // 1) Vendored file (static)
-        '/vendor/retell-client-js-sdk-2.0.7.umd.js?v=' + Date.now(),
-        // 2) Our proxy (non-fresh -> serves local cache)
-        '/sdk/retell.v1.js?v=' + Date.now(),
-        // 3) Public CDNs as last resort
-        'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.7/dist/index.umd.js',
-        'https://unpkg.com/retell-client-js-sdk@2.0.7/dist/index.umd.js'
-      ];
-      let lastErr;
-      for (const url of candidates) {
-        try { await loadScript(url); if (getCtor()) return; }
-        catch (e) { lastErr = e; }
-      }
-      throw lastErr || new Error('Retell SDK failed to load');
-    }
 
     async function startLiveDemo() {
       try {
-        await ensureSDK();
         const RetellCtor = getCtor();
-        if (!RetellCtor) throw new Error('Retell SDK not available');
+        if (!RetellCtor) throw new Error('Retell SDK not loaded (check /vendor file and cache)');
 
+        // Ask mic permission up front (better UX)
         await navigator.mediaDevices.getUserMedia({ audio: true });
 
         showModal();

@@ -14,12 +14,6 @@ import fs from 'fs/promises';
 // Prefer IPv4 on platforms without IPv6 (avoids ENETUNREACH)
 try { dns.setDefaultResultOrder('ipv4first'); } catch {}
 
-// Ensure fetch exists (Node < 18 safety)
-if (typeof fetch !== 'function') {
-  const { default: nodeFetch } = await import('node-fetch');
-  globalThis.fetch = nodeFetch;
-}
-
 const app = express();
 app.disable('x-powered-by');
 app.use(cors());
@@ -30,72 +24,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 /* ------------------------------------------------------------------ */
-/* Retell Web SDK proxy (serve local first; CDN only if ?fresh=1)     */
+/* Serve vendored Retell SDK directly                                 */
 /* ------------------------------------------------------------------ */
 const RETELL_LOCAL = path.join(PUBLIC_DIR, 'vendor', 'retell-client-js-sdk-2.0.7.umd.js');
 
-const RETELL_SDK_SOURCES = [
-  // Known-good UMD on npm CDNs
-  'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.7/dist/index.umd.js',
-  'https://unpkg.com/retell-client-js-sdk@2.0.7/dist/index.umd.js',
-  // Retell CDN fallbacks
-  'https://sdk.retellai.com/retell-client-browser-sdk/latest/index.js',
-  'https://sdk.retellai.com/retell-client-browser-sdk/0.5.0/index.js',
-  // Legacy
-  'https://cdn.retellai.com/webclient/retell-webclient.umd.js'
-];
-
-let sdkMemCache = null;
-
+// Keep the old endpoint for compatibility, but just serve the file (or redirect to CDN)
 app.get('/sdk/retell.v1.js', async (req, res) => {
   res.type('application/javascript; charset=utf-8');
-
-  // 0) Serve memory cache unless forced fresh
-  if (sdkMemCache && !('fresh' in req.query)) {
-    res.set('Cache-Control', 'public, max-age=604800, immutable');
-    return res.end(sdkMemCache);
+  try {
+    const buf = await fs.readFile(RETELL_LOCAL);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.end(buf);
+  } catch {
+    // Fallback to a known-good CDN build if the file wasn't deployed
+    return res.redirect(302, 'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.7/dist/index.umd.js');
   }
-
-  // 1) Serve local vendored file unless forced fresh
-  if (!('fresh' in req.query)) {
-    try {
-      const buf = await fs.readFile(RETELL_LOCAL);
-      if (buf?.length > 5000) {
-        sdkMemCache = buf.toString('utf8');
-        res.set('Cache-Control', 'public, max-age=604800, immutable');
-        console.log('Serving Retell SDK from local vendor:', buf.length, 'bytes');
-        return res.end(sdkMemCache);
-      }
-    } catch { /* not present yet */ }
-  }
-
-  // 2) Try CDNs in order (only hit when ?fresh=1 or local missing)
-  let lastErr;
-  for (const url of RETELL_SDK_SOURCES) {
-    try {
-      console.log('Trying Retell SDK:', url);
-      const r = await fetch(url, { redirect: 'follow' });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const text = await r.text();
-      if (!/Retell|WebClient|createCall|startCall/i.test(text) || text.length < 5000) {
-        throw new Error('bad content');
-      }
-      await fs.mkdir(path.dirname(RETELL_LOCAL), { recursive: true });
-      await fs.writeFile(RETELL_LOCAL, text, 'utf8');
-      sdkMemCache = text;
-      res.set('Cache-Control', 'public, max-age=604800, immutable');
-      console.log('Fetched & cached Retell SDK:', text.length, 'bytes from', url);
-      return res.end(text);
-    } catch (e) {
-      lastErr = e;
-      console.error('SDK fetch failed', url, e.message);
-    }
-  }
-
-  // 3) Graceful error script
-  return res
-    .status(503)
-    .end(`console.error("[Retell SDK] Failed to load from all sources");window.RetellSDKError=${JSON.stringify(lastErr?.message||'fetch failed')};`);
 });
 
 /* ------------------------------------------------------------------ */
@@ -112,7 +55,6 @@ app.use(express.static(PUBLIC_DIR, {
     }
   }
 }));
-
 app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
 // debug helper
@@ -138,7 +80,7 @@ if (DB_URL) {
     const host = u.hostname;
     const port = Number(u.port || 5432);
     const user = decodeURIComponent(u.username || '');
-    const password = decodeURIComponent(u.password || ''); // <-- fixed (removed stray label)
+    const password = decodeURIComponent(u.password || '');
     const database = (u.pathname || '/').replace(/^\//, '');
     const sslRequired = u.searchParams.get('sslmode') === 'require' || process.env.PGSSLMODE === 'require';
 
