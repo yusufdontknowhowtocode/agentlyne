@@ -32,10 +32,17 @@
   <script src="/config.js"></script>
   <link rel="stylesheet" href="style.css" />
 
-  <!-- 🔒 Load vendored Retell SDK from same origin (no CDN/proxy) -->
-  <script defer src="/vendor/retell-client-js-sdk-2.0.7.umd.js"></script>
+  <!-- Header button sizing -->
+  <style>
+    :root{ --btn-h:44px; } @media (min-width:640px){ :root{ --btn-h:48px; } }
+    .btn{display:inline-flex;align-items:center;justify-content:center;padding:.625rem 1rem;height:var(--btn-h);min-width:44px;border-radius:9999px;border:1px solid transparent;font-weight:600;line-height:1;white-space:nowrap}
+    .btn-primary{background:linear-gradient(135deg,#06b6d4,#0284c7);color:#fff}
+    .btn-outline{background:transparent;color:#e2e8f0;border-color:rgba(255,255,255,.30)}
+    .btn-outline:hover{background:rgba(255,255,255,.06)}
+    header nav{white-space:nowrap}
+  </style>
 
-  <!-- Minimal modal CSS (kept inline) -->
+  <!-- Minimal modal CSS -->
   <style>
     .retell-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.7);backdrop-filter:blur(6px);z-index:1000}
     .retell-card{width:min(92vw,420px);height:min(88vh,560px);background:#0b1020;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden}
@@ -55,9 +62,7 @@
       <div class="h-16 mt-4 rounded-full flex items-center justify-between px-4 bg-slate-900/40 backdrop-blur-xl border border-white/10">
         <a class="flex items-center gap-2" href="index.html">
           <span class="inline-grid place-items-center h-9 w-9 rounded-full bg-gradient-to-br from-sky-400 to-violet-500">
-            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none">
-              <path d="M12 3l8 4v6c0 4.418-3.582 8-8 8S4 17.418 4 13V7l8-4z" class="fill-white/95"/>
-            </svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M12 3l8 4v6c0 4.418-3.582 8-8 8S4 17.418 4 13V7l8-4z" class="fill-white/95"/></svg>
           </span>
           <strong class="text-slate-100">Agentlyne</strong>
         </a>
@@ -173,22 +178,10 @@
             From first ring<br class="hidden md:block"> to confirmed booking
           </h2>
           <div class="mt-6 text-slate-600">
-            <div class="flow-bullet">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Always-on coverage 24/7
-            </div>
-            <div class="flow-bullet">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Instant scheduling—no back-and-forth
-            </div>
-            <div class="flow-bullet">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Lead capture, qualification & smart routing
-            </div>
-            <div class="flow-bullet">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Automatic reminders & follow-ups
-            </div>
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Always-on coverage 24/7</div>
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Instant scheduling—no back-and-forth</div>
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Lead capture, qualification & smart routing</div>
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Automatic reminders & follow-ups</div>
           </div>
         </div>
 
@@ -200,7 +193,6 @@
             <div class="flow-card flow-chat">💬 Chat</div>
             <div class="flow-card flow-loop">♻️ Engagement loop</div>
           </div>
-
           <div class="flow-lines" aria-hidden="true">
             <svg viewBox="0 0 100 100" preserveAspectRatio="none">
               <path d="M33 25 C40 25, 42 25, 50 25" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
@@ -209,8 +201,7 @@
               <path d="M82 35 C82 45, 66 50, 66 58" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
               <defs>
                 <linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stop-color="#60a5fa"/>
-                  <stop offset="100%" stop-color="#a78bfa"/>
+                  <stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/>
                 </linearGradient>
               </defs>
             </svg>
@@ -226,7 +217,6 @@
       <h2 class="font-display text-4xl md:text-5xl font-bold tracking-[-0.02em] text-slate-800 text-center">
         AI Call Automation—Built for Growth
       </h2>
-
       <div class="solutions-grid mt-10">
         <article class="plan-card">
           <div class="plan-head">
@@ -274,16 +264,11 @@
     <div class="wrap px-6">
       <div class="workflow-unified mt-4">
         <div class="wf-col wf-left">
-          <h3 class="text-slate-800 text-2xl md:text-3xl font-extrabold tracking-[-0.01em]">
-            Custom <span class="text-brand-600">Workflows</span>
-          </h3>
-          <p class="text-slate-600 mt-2 max-w-xl">
-            We map your intake, routing, and scheduling rules into a reliable voice flow.
-            You get fewer missed calls and more booked revenue.
-          </p>
+          <h3 class="text-slate-800 text-2xl md:text-3xl font-extrabold tracking-[-0.01em]">Custom <span class="text-brand-600">Workflows</span></h3>
+          <p class="text-slate-600 mt-2 max-w-xl">We map your intake, routing, and scheduling rules into a reliable voice flow.
+            You get fewer missed calls and more booked revenue.</p>
           <div class="wf-mosaic" aria-hidden="true"></div>
         </div>
-
         <div class="wf-col wf-right">
           <a href="book.html?intent=custom-workflows" class="wf-pill">CONTACT SALES</a>
           <div class="features mt-6">
@@ -403,7 +388,7 @@
     </div>
   </div>
 
-  <!-- Live Demo controller (uses vendored SDK already loaded) -->
+  <!-- Live Demo controller -->
   <script>
     const modal = document.getElementById('retell-modal');
     const root  = document.getElementById('retell-root');
@@ -421,18 +406,36 @@
     };
     close?.addEventListener('click', hideModal);
 
+    // Load the unified SDK (served by our server) and return the constructor.
     function getCtor() {
       return window.RetellWebClient ||
              (window.Retell && (window.Retell.RetellWebClient || window.Retell.WebClient)) ||
-             null;
+             (window.RetellClient && (window.RetellClient.WebClient || window.RetellClient)) ||
+             window.WebClient || null;
+    }
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src; s.async = true;
+        s.onload = () => resolve(src);
+        s.onerror = () => reject(new Error('load error: ' + src));
+        document.head.appendChild(s);
+      });
+    }
+    async function ensureSDK() {
+      if (getCtor()) return;
+      // served locally (shim exposes window.RetellWebClient)
+      await loadScript('/sdk/retell.v1.js?_ts=' + Date.now());
+      if (!getCtor()) throw new Error('Retell SDK not loaded (check /vendor file and cache)');
     }
 
     async function startLiveDemo() {
       try {
+        await ensureSDK();
         const RetellCtor = getCtor();
-        if (!RetellCtor) throw new Error('Retell SDK not loaded (check /vendor file and cache)');
+        if (!RetellCtor) throw new Error('Retell SDK not available');
 
-        // Ask mic permission up front (better UX)
+        // Ask for mic early so modal shows with permission already granted
         await navigator.mediaDevices.getUserMedia({ audio: true });
 
         showModal();

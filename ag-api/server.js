@@ -24,20 +24,35 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 /* ------------------------------------------------------------------ */
-/* Serve vendored Retell SDK directly                                 */
+/* Retell Web SDK — serve vendored UMD and shim to one global         */
 /* ------------------------------------------------------------------ */
 const RETELL_LOCAL = path.join(PUBLIC_DIR, 'vendor', 'retell-client-js-sdk-2.0.7.umd.js');
 
-// Keep the old endpoint for compatibility, but just serve the file (or redirect to CDN)
-app.get('/sdk/retell.v1.js', async (req, res) => {
+/** Always return the local SDK. If missing, emit a tiny error script. */
+app.get('/sdk/retell.v1.js', async (_req, res) => {
   res.type('application/javascript; charset=utf-8');
   try {
-    const buf = await fs.readFile(RETELL_LOCAL);
+    const js = await fs.readFile(RETELL_LOCAL, 'utf8');
+    // Shim: normalize whatever the UMD exports to window.RetellWebClient
+    const shim = `
+;(() => {
+  const g = window;
+  const fromKnown =
+    g.RetellWebClient ||
+    g.WebClient ||
+    (g.RetellClient && (g.RetellClient.WebClient || g.RetellClient)) ||
+    (g.Retell && (g.Retell.WebClient || g.Retell.RetellWebClient));
+  if (fromKnown && !g.RetellWebClient) g.RetellWebClient = fromKnown;
+})();
+`;
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    return res.end(buf);
-  } catch {
-    // Fallback to a known-good CDN build if the file wasn't deployed
-    return res.redirect(302, 'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.7/dist/index.umd.js');
+    return res.end(js + '\n' + shim);
+  } catch (e) {
+    const rel = '/vendor/retell-client-js-sdk-2.0.7.umd.js';
+    res.status(404).end(
+      `console.error("Retell SDK missing: ${rel}");` +
+      `window.RetellSDKError="missing ${rel}";`
+    );
   }
 });
 
@@ -55,6 +70,7 @@ app.use(express.static(PUBLIC_DIR, {
     }
   }
 }));
+
 app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
 // debug helper
