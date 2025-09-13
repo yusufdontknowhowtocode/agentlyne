@@ -31,6 +31,14 @@
   <!-- Site config + CSS -->
   <script src="/config.js"></script>
   <link rel="stylesheet" href="style.css" />
+
+  <!-- Minimal modal CSS (kept here so it's guaranteed) -->
+  <style>
+    .retell-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.7);backdrop-filter:blur(6px);z-index:1000}
+    .retell-card{width:min(92vw,420px);height:min(88vh,560px);background:#0b1020;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden}
+    .retell-close{position:absolute;top:8px;right:10px;background:transparent;border:0;color:#fff;font-size:24px;cursor:pointer;z-index:1}
+    body.modal-open{overflow:hidden}
+  </style>
 </head>
 <body class="font-sans">
   <!-- background orbs + canvas (parallax) -->
@@ -50,7 +58,6 @@
           </span>
           <strong class="text-slate-100">Agentlyne</strong>
         </a>
-        <!-- gap tightened; header buttons sized by CSS vars -->
         <nav class="flex items-center gap-2">
           <a href="pricing.html" class="btn btn-outline">Pricing</a>
           <a href="book.html" class="btn btn-primary">Book a Call</a>
@@ -393,10 +400,7 @@
     </div>
   </div>
 
-  <!-- Preload our proxy (harmless if it fails; the fallback loader will try CDNs) -->
-  <script defer src="/sdk/retell.v1.js?v=3"></script>
-
-  <!-- Live Demo controller + robust SDK loader -->
+  <!-- Live Demo controller (loads SDK locally first; no ?fresh) -->
   <script>
     const modal = document.getElementById('retell-modal');
     const root  = document.getElementById('retell-root');
@@ -414,7 +418,6 @@
     };
     close?.addEventListener('click', hideModal);
 
-    // ---- Retell loader: proxy -> cache-bust -> jsDelivr -> unpkg
     function getCtor() {
       return window.RetellWebClient ||
              (window.Retell && (window.Retell.RetellWebClient || window.Retell.WebClient)) ||
@@ -423,10 +426,7 @@
     function loadScript(src) {
       return new Promise((resolve, reject) => {
         const s = document.createElement('script');
-        s.src = src;
-        s.async = true;
-        s.crossOrigin = 'anonymous';
-        s.referrerPolicy = 'no-referrer';
+        s.src = src; s.async = true; s.crossOrigin = 'anonymous'; s.referrerPolicy = 'no-referrer';
         s.onload = () => resolve(src);
         s.onerror = () => reject(new Error('load error: ' + src));
         document.head.appendChild(s);
@@ -434,18 +434,22 @@
     }
     async function ensureSDK() {
       if (getCtor()) return;
-      const urls = [
+
+      const candidates = [
+        // 1) Vendored file (static)
+        '/vendor/retell-client-js-sdk-2.0.7.umd.js?v=' + Date.now(),
+        // 2) Our proxy (non-fresh -> serves local cache)
         '/sdk/retell.v1.js?v=' + Date.now(),
-        '/sdk/retell.v1.js?fresh=1&v=' + Date.now(),
+        // 3) Public CDNs as last resort
         'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.7/dist/index.umd.js',
         'https://unpkg.com/retell-client-js-sdk@2.0.7/dist/index.umd.js'
       ];
       let lastErr;
-      for (const url of urls) {
+      for (const url of candidates) {
         try { await loadScript(url); if (getCtor()) return; }
         catch (e) { lastErr = e; }
       }
-      throw lastErr || new Error('Retell SDK failed to load from all sources');
+      throw lastErr || new Error('Retell SDK failed to load');
     }
 
     async function startLiveDemo() {
