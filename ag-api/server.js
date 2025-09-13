@@ -24,108 +24,102 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 /* ------------------------------------------------------------------ */
-/* Retell Web SDK proxy (single, correct, cached)                     */
-/* IMPORTANT: this route is BEFORE express.static()                    */
+/* Retell Web SDK proxy (robust, cached, before express.static)       */
 /* ------------------------------------------------------------------ */
 
-// Working public builds of the web client SDK
-// Replace the RETELL_SDK_SOURCES array in your server.js with these updated URLs:
+// Local vendored file path (we'll write here after first good fetch).
+// You can also pre-populate it via: 
+//   mkdir -p public/vendor && curl -L https://cdn.jsdelivr.net/npm/retell-client-js-sdk@3.0.0/dist/index.umd.js -o public/vendor/retell-client-js-sdk-3.0.0.umd.js
+// Local vendored file
+const RETELL_LOCAL = path.join(PUBLIC_DIR, 'vendor', 'retell-client-js-sdk-2.0.7.umd.js');
 
+// CDN candidates (2.0.7 first; keep others as fallbacks)
 const RETELL_SDK_SOURCES = [
-  // Primary: Retell's official CDN
-  'https://sdk.retellai.com/retell-client-browser-sdk/0.5.0/index.js',
+  'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.7/dist/index.umd.js',
+  'https://unpkg.com/retell-client-js-sdk@2.0.7/dist/index.umd.js',
   'https://sdk.retellai.com/retell-client-browser-sdk/latest/index.js',
-  
-  // Secondary: npm CDN alternatives
-  'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@3.0.0/dist/index.umd.js',
-  'https://unpkg.com/retell-client-js-sdk@3.0.0/dist/index.umd.js',
-  
-  // Legacy fallback
+  'https://sdk.retellai.com/retell-client-browser-sdk/0.5.0/index.js',
   'https://cdn.retellai.com/webclient/retell-webclient.umd.js'
 ];
 
-// Also update your /sdk/retell.v1.js route to handle the SDK format better:
+
+let sdkMemCache = null; // string buffer in memory
+
+async function fetchText(url, timeoutMs = 12000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, {
+      signal: ctrl.signal,
+      redirect: 'follow',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Agentlyne/1.0)' }
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+    return await r.text();
+  } finally { clearTimeout(t); }
+}
+
 app.get('/sdk/retell.v1.js', async (req, res) => {
   res.type('application/javascript; charset=utf-8');
-  const wantFresh = 'fresh' in req.query;
 
-  // 1) Serve cached file if present and not forcing a refresh
-  if (!wantFresh) {
+  // 0) Serve memory cache unless forced fresh
+  if (sdkMemCache && !('fresh' in req.query)) {
+    res.set('Cache-Control', 'public, max-age=604800, immutable');
+    return res.end(sdkMemCache);
+  }
+
+  // 1) Serve local vendored file (if present) unless forced fresh
+  if (!('fresh' in req.query)) {
     try {
       const buf = await fs.readFile(RETELL_LOCAL);
-      // Reduced minimum size check - some SDK versions are smaller
-      if (buf.length > 10_000) {
-        console.log('Serving cached Retell SDK:', buf.length, 'bytes');
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        return res.end(buf);
+      if (buf?.length > 5000) {
+        sdkMemCache = buf.toString('utf8');
+        res.set('Cache-Control', 'public, max-age=604800, immutable');
+        console.log('Serving Retell SDK from local vendor:', buf.length, 'bytes');
+        return res.end(sdkMemCache);
       }
-    } catch (err) {
-      console.log('No cached SDK found:', err.message);
-    }
+    } catch { /* not present yet */ }
   }
 
   // 2) Try CDNs in order
   let lastErr;
   for (const url of RETELL_SDK_SOURCES) {
-    console.log('Trying to fetch SDK from:', url);
     try {
-      const r = await fetch(url, { 
-        redirect: 'follow',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; Agentlyne/1.0)'
-        }
-      });
-      
-      if (!r.ok) { 
-        lastErr = new Error(`HTTP ${r.status} from ${url}`); 
-        console.error('SDK fetch failed:', lastErr.message);
-        continue; 
-      }
-      
-      const text = await r.text();
-      const buf = Buffer.from(text);
-      
-      // More lenient size check
-      if (buf.length < 5_000) { 
-        lastErr = new Error(`SDK too small: ${buf.length} bytes from ${url}`); 
-        console.error(lastErr.message);
-        continue; 
-      }
+      console.log('Trying Retell SDK:', url);
+      const text = await fetchText(url);
+      const okLen = (text || '').length > 5000;
+      const looksLikeSDK = /Retell|WebClient|createCall|startCall/i.test(text || '');
+      if (!okLen || !looksLikeSDK) throw new Error(`Bad SDK content from ${url}`);
 
-      // Ensure the content looks like JavaScript
-      if (!text.includes('Retell') && !text.includes('retell') && !text.includes('WebClient')) {
-        lastErr = new Error('Content does not appear to be Retell SDK');
-        console.error('Invalid SDK content from:', url);
-        continue;
-      }
-
-      console.log('Successfully fetched SDK:', buf.length, 'bytes from', url);
-      
-      // persist and return
+      // cache to disk + memory
       await fs.mkdir(path.dirname(RETELL_LOCAL), { recursive: true });
-      await fs.writeFile(RETELL_LOCAL, buf);
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      return res.end(buf);
+      await fs.writeFile(RETELL_LOCAL, text, 'utf8');
+      sdkMemCache = text;
+
+      res.set('Cache-Control', 'public, max-age=604800, immutable');
+      console.log('Fetched & cached Retell SDK:', text.length, 'bytes from', url);
+      return res.end(text);
     } catch (e) {
       lastErr = e;
-      console.error('Error fetching from', url, ':', e.message);
+      console.error('SDK fetch failed:', url, '-', e.message);
     }
   }
 
-  // 3) If all sources failed, try whatever is on disk
+  // 3) Fall back to whatever is on disk if available
   try {
     const buf = await fs.readFile(RETELL_LOCAL);
-    console.log('Falling back to cached SDK:', buf.length, 'bytes');
-    res.setHeader('Cache-Control', 'public, max-age=600');
-    return res.end(buf);
-  } catch (err) {
-    console.error('No cached SDK available:', err.message);
-  }
+    if (buf?.length > 5000) {
+      sdkMemCache = buf.toString('utf8');
+      res.set('Cache-Control', 'public, max-age=600');
+      console.log('Falling back to cached Retell SDK:', buf.length, 'bytes');
+      return res.end(sdkMemCache);
+    }
+  } catch {}
 
-  // 4) Return error that won't break the page
+  // 4) Graceful error script (won’t crash the page)
   const errorScript = `
-    console.error("[Retell SDK] Failed to load from all sources");
-    console.error("[Retell SDK] Last error:", ${JSON.stringify(lastErr?.message || 'Unknown error')});
+    console.error("[Retell SDK] Failed to load from all sources.");
+    console.error("[Retell SDK] Last error: ${JSON.stringify(lastErr?.message || 'unknown')}");
     window.RetellSDKError = ${JSON.stringify(lastErr?.message || 'SDK unavailable')};
   `;
   return res.status(503).end(errorScript);

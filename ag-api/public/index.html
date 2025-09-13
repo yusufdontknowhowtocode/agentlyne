@@ -50,7 +50,7 @@
           </span>
           <strong class="text-slate-100">Agentlyne</strong>
         </a>
-        <!-- gap tightened: gap-3 -> gap-2 (CSS also applies compact sizing) -->
+        <!-- gap tightened; header buttons sized by CSS vars -->
         <nav class="flex items-center gap-2">
           <a href="pricing.html" class="btn btn-outline">Pricing</a>
           <a href="book.html" class="btn btn-primary">Book a Call</a>
@@ -393,10 +393,10 @@
     </div>
   </div>
 
-  <!-- Preload our first-party Retell SDK proxy (no external CDNs) -->
+  <!-- Preload our proxy (harmless if it fails; the fallback loader will try CDNs) -->
   <script defer src="/sdk/retell.v1.js?v=3"></script>
 
-  <!-- Live Demo controller -->
+  <!-- Live Demo controller + robust SDK loader -->
   <script>
     const modal = document.getElementById('retell-modal');
     const root  = document.getElementById('retell-root');
@@ -414,34 +414,38 @@
     };
     close?.addEventListener('click', hideModal);
 
+    // ---- Retell loader: proxy -> cache-bust -> jsDelivr -> unpkg
     function getCtor() {
       return window.RetellWebClient ||
              (window.Retell && (window.Retell.RetellWebClient || window.Retell.WebClient)) ||
              null;
     }
-
     function loadScript(src) {
       return new Promise((resolve, reject) => {
         const s = document.createElement('script');
-        s.src = src; s.async = true; s.crossOrigin = 'anonymous'; s.referrerPolicy = 'no-referrer';
+        s.src = src;
+        s.async = true;
+        s.crossOrigin = 'anonymous';
+        s.referrerPolicy = 'no-referrer';
         s.onload = () => resolve(src);
         s.onerror = () => reject(new Error('load error: ' + src));
         document.head.appendChild(s);
       });
     }
-
     async function ensureSDK() {
       if (getCtor()) return;
-      const candidates = [
+      const urls = [
         '/sdk/retell.v1.js?v=' + Date.now(),
-        '/sdk/retell.v1.js?fresh=1&v=' + Date.now()
+        '/sdk/retell.v1.js?fresh=1&v=' + Date.now(),
+        'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.7/dist/index.umd.js',
+        'https://unpkg.com/retell-client-js-sdk@2.0.7/dist/index.umd.js'
       ];
       let lastErr;
-      for (const url of candidates) {
+      for (const url of urls) {
         try { await loadScript(url); if (getCtor()) return; }
         catch (e) { lastErr = e; }
       }
-      throw lastErr || new Error('Retell SDK failed to load');
+      throw lastErr || new Error('Retell SDK failed to load from all sources');
     }
 
     async function startLiveDemo() {
