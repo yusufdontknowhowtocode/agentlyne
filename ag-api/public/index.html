@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 
-  <!-- Tailwind -->
+  <!-- Tailwind (ok for now; consider bundling later for prod) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -62,9 +62,7 @@
       <div class="h-16 mt-4 rounded-full flex items-center justify-between px-4 bg-slate-900/40 backdrop-blur-xl border border-white/10">
         <a class="flex items-center gap-2" href="index.html">
           <span class="inline-grid place-items-center h-9 w-9 rounded-full bg-gradient-to-br from-sky-400 to-violet-500">
-            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none">
-              <path d="M12 3l8 4v6c0 4.418-3.582 8-8 8S4 17.418 4 13V7l8-4z" class="fill-white/95"/>
-            </svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M12 3l8 4v6c0 4.418-3.582 8-8 8S4 17.418 4 13V7l8-4z" class="fill-white/95"/></svg>
           </span>
           <strong class="text-slate-100">Agentlyne</strong>
         </a>
@@ -180,22 +178,10 @@
             From first ring<br class="hidden md:block"> to confirmed booking
           </h2>
           <div class="mt-6 text-slate-600">
-            <div class="flow-bullet">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Always-on coverage 24/7
-            </div>
-            <div class="flow-bullet">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Instant scheduling—no back-and-forth
-            </div>
-            <div class="flow-bullet">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Lead capture, qualification & smart routing
-            </div>
-            <div class="flow-bullet">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Automatic reminders & follow-ups
-            </div>
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Always-on coverage 24/7</div>
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Instant scheduling—no back-and-forth</div>
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Lead capture, qualification & smart routing</div>
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Automatic reminders & follow-ups</div>
           </div>
         </div>
 
@@ -207,7 +193,6 @@
             <div class="flow-card flow-chat">💬 Chat</div>
             <div class="flow-card flow-loop">♻️ Engagement loop</div>
           </div>
-
           <div class="flow-lines" aria-hidden="true">
             <svg viewBox="0 0 100 100" preserveAspectRatio="none">
               <path d="M33 25 C40 25, 42 25, 50 25" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
@@ -216,8 +201,7 @@
               <path d="M82 35 C82 45, 66 50, 66 58" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
               <defs>
                 <linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stop-color="#60a5fa"/>
-                  <stop offset="100%" stop-color="#a78bfa"/>
+                  <stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/>
                 </linearGradient>
               </defs>
             </svg>
@@ -233,7 +217,6 @@
       <h2 class="font-display text-4xl md:text-5xl font-bold tracking-[-0.02em] text-slate-800 text-center">
         AI Call Automation—Built for Growth
       </h2>
-
       <div class="solutions-grid mt-10">
         <article class="plan-card">
           <div class="plan-head">
@@ -281,16 +264,11 @@
     <div class="wrap px-6">
       <div class="workflow-unified mt-4">
         <div class="wf-col wf-left">
-          <h3 class="text-slate-800 text-2xl md:text-3xl font-extrabold tracking-[-0.01em]">
-            Custom <span class="text-brand-600">Workflows</span>
-          </h3>
-          <p class="text-slate-600 mt-2 max-w-xl">
-            We map your intake, routing, and scheduling rules into a reliable voice flow.
-            You get fewer missed calls and more booked revenue.
-          </p>
+          <h3 class="text-slate-800 text-2xl md:text-3xl font-extrabold tracking-[-0.01em]">Custom <span class="text-brand-600">Workflows</span></h3>
+          <p class="text-slate-600 mt-2 max-w-xl">We map your intake, routing, and scheduling rules into a reliable voice flow.
+            You get fewer missed calls and more booked revenue.</p>
           <div class="wf-mosaic" aria-hidden="true"></div>
         </div>
-
         <div class="wf-col wf-right">
           <a href="book.html?intent=custom-workflows" class="wf-pill">CONTACT SALES</a>
           <div class="features mt-6">
@@ -410,7 +388,7 @@
     </div>
   </div>
 
-  <!-- Live Demo controller (loads LiveKit first, then local /sdk/retell.v1.js) -->
+  <!-- Live Demo controller (robust loader: bundled Retell -> local LiveKit -> local Retell) -->
   <script>
     const modal = document.getElementById('retell-modal');
     const root  = document.getElementById('retell-root');
@@ -443,48 +421,55 @@
 
     function sniffRetellCtor() {
       const w = window;
-      if (w.RetellWebClient) return w.RetellWebClient;
-      if (w.WebClient)       return w.WebClient;
-      if (w.Retell?.WebClient) return w.Retell.WebClient;
-      // last-resort heuristic
-      for (const k in w) {
-        const v = w[k];
-        if (v && typeof v === 'object' && typeof v.WebClient === 'function') {
-          return v.WebClient;
-        }
-      }
-      return null;
+      return w.RetellWebClient
+        || w.WebClient
+        || w.Retell?.WebClient
+        || (w.RetellClient && w.RetellClient.WebClient)
+        || (w.RetellSDK && w.RetellSDK.WebClient)
+        || null;
     }
 
     async function ensureLiveKit() {
       const tries = [
-        '/vendor/livekit-client-1.18.3.umd.js',
+        '/vendor/livekit-client-1.18.3.umd.js', // same-origin, server caches it
         'https://cdn.jsdelivr.net/npm/livekit-client@1.18.3/dist/livekit-client.umd.js',
         'https://unpkg.com/livekit-client@1.18.3/dist/livekit-client.umd.js'
       ];
-      let err;
       for (const url of tries) {
-        try { await loadScript(url); return; } catch (e) { err = e; }
+        try { await loadScript(url); return; } catch {}
       }
-      throw err || new Error('LiveKit failed to load');
+      throw new Error('LiveKit failed to load from all sources');
     }
 
-    async function ensureRetell() {
-      // always use our local, stable UMD served by server.js
-      await loadScript('/sdk/retell.v1.js?v=' + Date.now());
+    async function ensureRetellLocal() {
+      await loadScript('/sdk/retell.v1.js?fresh=1&v=' + Date.now());
       const Ctor = sniffRetellCtor();
       if (!Ctor) throw new Error('Retell SDK not loaded (check /public/vendor file and /sdk route)');
       return Ctor;
     }
 
+    async function ensureSDK() {
+      // 1) Prefer official *bundled* builds (no LiveKit required)
+      const bundled = [
+        'https://sdk.retellai.com/retell-client-browser-sdk/latest/index.js',
+        'https://cdn.jsdelivr.net/npm/retell-client-browser-sdk@0.5/dist/index.js',
+        'https://unpkg.com/retell-client-browser-sdk@0.5/dist/index.js',
+      ];
+      for (const url of bundled) {
+        try { await loadScript(url); const C = sniffRetellCtor(); if (C) return C; } catch {}
+      }
+
+      // 2) Fallback: load LiveKit (local-first), then our local Retell shim
+      await ensureLiveKit();
+      return ensureRetellLocal();
+    }
+
     async function startLiveDemo() {
       try {
-        // Mic permission first for clearer UX
+        // Mic permission up front (clear UX)
         await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        // Dependencies -> SDK
-        await ensureLiveKit();
-        const RetellWebClient = await ensureRetell();
+        const RetellWebClient = await ensureSDK();
 
         showModal();
         client = new RetellWebClient();
