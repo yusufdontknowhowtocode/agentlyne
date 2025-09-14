@@ -24,30 +24,75 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 /* ------------------------------------------------------------------ */
+/* fetch fallback (for Node runtimes without global fetch)             */
+/* ------------------------------------------------------------------ */
+const httpFetch = globalThis.fetch ?? (await import('node-fetch')).default;
+
+/* ------------------------------------------------------------------ */
+/* LiveKit UMD — local-first (auto-fetch & cache if missing)          */
+/* ------------------------------------------------------------------ */
+const LIVEKIT_LOCAL = path.join(PUBLIC_DIR, 'vendor', 'livekit-client-1.18.3.umd.js');
+const LIVEKIT_CDNS = [
+  'https://cdn.jsdelivr.net/npm/livekit-client@1.18.3/dist/livekit-client.umd.js',
+  'https://unpkg.com/livekit-client@1.18.3/dist/livekit-client.umd.js',
+];
+
+app.get('/vendor/livekit-client-1.18.3.umd.js', async (_req, res) => {
+  res.type('application/javascript; charset=utf-8');
+
+  async function readLocal() {
+    const buf = await fs.readFile(LIVEKIT_LOCAL);
+    if (buf.length < 5000) throw new Error('local LiveKit too small');
+    return buf;
+  }
+
+  try {
+    const buf = await readLocal();
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.end(buf);
+  } catch {
+    for (const url of LIVEKIT_CDNS) {
+      try {
+        const r = await httpFetch(url, { redirect: 'follow' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const text = await r.text();
+        if (text.length < 5000 || !/LiveKit|Room|connect/i.test(text)) {
+          throw new Error('bad LiveKit content');
+        }
+        await fs.mkdir(path.dirname(LIVEKIT_LOCAL), { recursive: true });
+        await fs.writeFile(LIVEKIT_LOCAL, text, 'utf8');
+        res.set('Cache-Control', 'public, max-age=31536000, immutable');
+        return res.end(text);
+      } catch {}
+    }
+    return res.status(503).end('console.error("LiveKit UMD fetch failed");');
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* Retell Web SDK — serve vendored UMD and shim to one global         */
 /* ------------------------------------------------------------------ */
-// --- Retell Web SDK (local-first) ------------------------------------------
 const RETELL_LOCAL = path.join(PUBLIC_DIR, 'vendor', 'retell-client-js-sdk-2.0.7.umd.js');
 const RETELL_CDNS = [
   'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.7/dist/index.umd.js',
   'https://unpkg.com/retell-client-js-sdk@2.0.7/dist/index.umd.js',
 ];
 
+// Shim: normalize whatever the UMD exports to window.RetellWebClient
 const RETELL_SHIM = `
 ;(()=>{try{
   const g = window;
   const ctor =
     g.RetellWebClient ||
     (g.Retell && (g.Retell.WebClient || g.Retell.RetellWebClient)) ||
-    g.WebClient ||                         // some builds export this
+    g.WebClient ||
     (g.RetellClient && g.RetellClient.WebClient) ||
     (g.RetellSDK && g.RetellSDK.WebClient);
-
   if (ctor && !g.RetellWebClient) g.RetellWebClient = ctor;
 } catch(e){ console.error('[retell shim]', e); }})();
 `;
 
-app.get('/sdk/retell.v1.js', async (req, res) => {
+app.get('/sdk/retell.v1.js', async (_req, res) => {
   res.type('application/javascript; charset=utf-8');
 
   async function readLocal() {
@@ -58,14 +103,11 @@ app.get('/sdk/retell.v1.js', async (req, res) => {
 
   let sdk;
   try {
-    // 1) local vendor first (normal path)
     sdk = await readLocal();
   } catch {
-    // 2) vendored file missing — try to fetch & cache
-    let lastErr;
     for (const url of RETELL_CDNS) {
       try {
-        const r = await fetch(url, { redirect: 'follow' });
+        const r = await httpFetch(url, { redirect: 'follow' });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const text = await r.text();
         if (!/Retell|WebClient|createCall|startCall/i.test(text) || text.length < 5000) {
@@ -75,17 +117,15 @@ app.get('/sdk/retell.v1.js', async (req, res) => {
         await fs.writeFile(RETELL_LOCAL, text, 'utf8');
         sdk = Buffer.from(text, 'utf8');
         break;
-      } catch (e) { lastErr = e; }
+      } catch {}
     }
-    if (!sdk) return res.status(503).end(`console.error("Retell SDK fetch failed");`);
+    if (!sdk) return res.status(503).end('console.error("Retell SDK fetch failed");');
   }
 
-  // 3) append shim that exposes window.RetellWebClient
   const out = Buffer.concat([sdk, Buffer.from(RETELL_SHIM, 'utf8')]);
   res.set('Cache-Control', 'public, max-age=604800, immutable');
   return res.end(out);
 });
-
 
 /* ------------------------------------------------------------------ */
 /* Static site                                                        */
@@ -142,7 +182,7 @@ if (DB_URL) {
     console.warn('DB IPv4 resolve failed; fallback to connectionString:', err?.message);
     pool = new Pool({
       connectionString: DB_URL,
-      ssl: DB_URL.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
+      ssl: DB_URL?.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
       keepAlive: true,
     });
   }
@@ -161,6 +201,7 @@ async function ensureSchema() {
   );`;
   try {
     await pool.query(createSql);
+    // NOTE: these are normal template literals (no leading backslash!)
     try { await pool.query(`ALTER TABLE bookings ALTER COLUMN name DROP NOT NULL;`); } catch {}
     try { await pool.query(`ALTER TABLE bookings ALTER COLUMN start_utc DROP NOT NULL;`); } catch {}
     console.log('DB schema ready');
@@ -205,9 +246,12 @@ function tzOffsetMinutesAt(tz, epochMs) {
       hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
     }).formatToParts(new Date(epochMs));
     const name = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT';
+    // Proper regex: use \d inside a regex literal (NOT \\d)
     const m = name.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/);
-    if (!m) return 0; const sign = m[1].startsWith('-') ? -1 : 1;
-    const h = Math.abs(parseInt(m[1], 10)); const mm = m[2] ? parseInt(m[2], 10) : 0;
+    if (!m) return 0;
+    const sign = m[1].startsWith('-') ? -1 : 1;
+    const h = Math.abs(parseInt(m[1], 10));
+    const mm = m[2] ? parseInt(m[2], 10) : 0;
     return sign * (h * 60 + mm);
   } catch { return 0; }
 }
@@ -235,14 +279,14 @@ app.get('/api/db-info', async (_req, res) => {
       WHERE table_schema='public' AND table_name='bookings'
       ORDER BY ordinal_position
     `);
-    const u = new URL(DB_URL);
+    const u = DB_URL ? new URL(DB_URL) : null;
     res.json({
       ok: true,
-      user: u.username,
-      host: u.hostname,
-      port: Number(u.port || 5432),
-      db: (u.pathname || '/').replace('/',''),
-      sslRequired: u.searchParams.get('sslmode') === 'require',
+      user: u?.username || null,
+      host: u?.hostname || null,
+      port: u ? Number(u.port || 5432) : null,
+      db: u ? (u.pathname || '/').replace('/','') : null,
+      sslRequired: u ? u.searchParams.get('sslmode') === 'require' : null,
       mode: 'IPv4 (static env)',
       columns: cols.rows.map(r => r.column_name)
     });
@@ -352,7 +396,7 @@ async function handleCreateWebCall(_req, res) {
     const agentId = process.env.RETELL_AGENT_ID;
     if (!apiKey || !agentId) return res.status(500).json({ error:'Missing RETELL_API_KEY or RETELL_AGENT_ID' });
 
-    const resp = await fetch('https://api.retellai.com/v2/create-web-call', {
+    const resp = await httpFetch('https://api.retellai.com/v2/create-web-call', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ agent_id: agentId }),
