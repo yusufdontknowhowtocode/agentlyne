@@ -390,80 +390,100 @@
 
   <!-- Live Demo controller -->
   <script>
-    const modal = document.getElementById('retell-modal');
-    const root  = document.getElementById('retell-root');
-    const close = document.getElementById('retell-close');
-    const btn   = document.getElementById('live-demo');
-    let client = null;
+  const modal = document.getElementById('retell-modal');
+  const root  = document.getElementById('retell-root');
+  const close = document.getElementById('retell-close');
+  const btn   = document.getElementById('live-demo');
+  let client = null;
 
-    const showModal = () => { modal.style.display = 'flex'; document.body.classList.add('modal-open'); };
-    const hideModal = () => {
-      modal.style.display = 'none';
-      document.body.classList.remove('modal-open');
-      root.innerHTML = '';
-      try { client?.endCall?.(); client?.hangUp?.(); } catch {}
-      client = null;
-    };
-    close?.addEventListener('click', hideModal);
+  const showModal = () => { modal.style.display = 'flex'; document.body.classList.add('modal-open'); };
+  const hideModal = () => {
+    modal.style.display = 'none';
+    document.body.classList.remove('modal-open');
+    root.innerHTML = '';
+    try { client?.endCall?.(); client?.hangUp?.(); } catch {}
+    client = null;
+  };
+  close?.addEventListener('click', hideModal);
 
-    // Load the unified SDK (served by our server) and return the constructor.
-    function getCtor() {
-      return window.RetellWebClient ||
-             (window.Retell && (window.Retell.RetellWebClient || window.Retell.WebClient)) ||
-             (window.RetellClient && (window.RetellClient.WebClient || window.RetellClient)) ||
-             window.WebClient || null;
+  /* --------- SDK loader (robust) --------- */
+  function getCtor() {
+    const g = window;
+    return (
+      g.RetellWebClient ||
+      (g.Retell && (g.Retell.RetellWebClient || g.Retell.WebClient)) ||
+      g.WebClient ||
+      null
+    );
+  }
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.async = true; s.crossOrigin = 'anonymous'; s.referrerPolicy = 'no-referrer';
+      s.onload = resolve; s.onerror = () => reject(new Error('load error: ' + src));
+      document.head.appendChild(s);
+    });
+  }
+  async function waitForCtor(ms = 3000) {
+    const end = Date.now() + ms;
+    while (!getCtor() && Date.now() < end) {
+      await new Promise(r => setTimeout(r, 60));
     }
-    function loadScript(src) {
-      return new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = src; s.async = true;
-        s.onload = () => resolve(src);
-        s.onerror = () => reject(new Error('load error: ' + src));
-        document.head.appendChild(s);
-      });
+    return !!getCtor();
+  }
+  async function ensureSDK() {
+    // If already present, done.
+    if (getCtor()) return;
+
+    // Give the existing <script defer src="/sdk/retell.v1.js"> a moment to execute.
+    await new Promise(r => setTimeout(r, 120));
+    if (getCtor()) return;
+
+    // Force a fresh fetch from your server proxy (bust any bad cached 503).
+    await loadScript('/sdk/retell.v1.js?fresh=1&cb=' + Date.now());
+
+    // Wait up to 3s for the constructor to appear.
+    if (!(await waitForCtor(3000))) {
+      throw new Error('Retell SDK not loaded (check /public/vendor file and /sdk route)');
     }
-    async function ensureSDK() {
-      if (getCtor()) return;
-      // served locally (shim exposes window.RetellWebClient)
-      await loadScript('/sdk/retell.v1.js?_ts=' + Date.now());
-      if (!getCtor()) throw new Error('Retell SDK not loaded (check /vendor file and cache)');
-    }
+  }
+  /* -------------------------------------- */
 
-    async function startLiveDemo() {
-      try {
-        await ensureSDK();
-        const RetellCtor = getCtor();
-        if (!RetellCtor) throw new Error('Retell SDK not available');
+  async function startLiveDemo() {
+    try {
+      await ensureSDK();
+      const RetellCtor = getCtor();
+      if (!RetellCtor) throw new Error('Retell SDK not available');
 
-        // Ask for mic early so modal shows with permission already granted
-        await navigator.mediaDevices.getUserMedia({ audio: true });
+      // mic permission up front (clearer error surface)
+      await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        showModal();
-        client = new RetellCtor();
+      showModal();
+      client = new RetellCtor();
 
-        client.on?.('status', s => console.log('[retell:status]', s));
-        client.on?.('error',  e => console.error('[retell:error]', e));
-        client.on?.('call_ended', hideModal);
-        client.on?.('call-ended', hideModal);
+      client.on?.('status', s => console.log('[retell:status]', s));
+      client.on?.('error',  e => console.error('[retell:error]', e));
+      client.on?.('call_ended', hideModal);
+      client.on?.('call-ended', hideModal);
 
-        await client.createCall({ container: root, theme: 'dark' });
+      await client.createCall({ container: root, theme: 'dark' });
 
-        const r = await fetch('/api/retell/create-web-call', { method: 'POST' });
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok || !data?.access_token) {
-          const msg = data?.error || `Token endpoint bad response (${r.status})`;
-          throw new Error(msg);
-        }
-
-        await client.startCall({ accessToken: data.access_token });
-      } catch (err) {
-        console.error('[live-demo]', err);
-        alert(`Could not start the live demo:\n${err.message || err}`);
-        hideModal();
+      const r = await fetch('/api/retell/create-web-call', { method: 'POST' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data?.access_token) {
+        const msg = data?.error || `Token endpoint bad response (${r.status})`;
+        throw new Error(msg);
       }
-    }
 
-    btn?.addEventListener('click', (e) => { e.preventDefault(); startLiveDemo(); });
-  </script>
+      await client.startCall({ accessToken: data.access_token });
+    } catch (err) {
+      console.error('[live-demo]', err);
+      alert(`Could not start the live demo:\n${err.message || err}`);
+      hideModal();
+    }
+  }
+
+  btn?.addEventListener('click', (e) => { e.preventDefault(); startLiveDemo(); });
+</script>
 </body>
 </html>
