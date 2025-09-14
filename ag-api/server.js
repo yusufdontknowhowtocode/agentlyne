@@ -26,35 +26,66 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 /* ------------------------------------------------------------------ */
 /* Retell Web SDK — serve vendored UMD and shim to one global         */
 /* ------------------------------------------------------------------ */
+// --- Retell Web SDK (local-first) ------------------------------------------
 const RETELL_LOCAL = path.join(PUBLIC_DIR, 'vendor', 'retell-client-js-sdk-2.0.7.umd.js');
+const RETELL_CDNS = [
+  'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.7/dist/index.umd.js',
+  'https://unpkg.com/retell-client-js-sdk@2.0.7/dist/index.umd.js',
+];
 
-/** Always return the local SDK. If missing, emit a tiny error script. */
-app.get('/sdk/retell.v1.js', async (_req, res) => {
-  res.type('application/javascript; charset=utf-8');
-  try {
-    const js = await fs.readFile(RETELL_LOCAL, 'utf8');
-    // Shim: normalize whatever the UMD exports to window.RetellWebClient
-    const shim = `
-;(() => {
+const RETELL_SHIM = `
+;(()=>{try{
   const g = window;
-  const fromKnown =
+  const ctor =
     g.RetellWebClient ||
-    g.WebClient ||
-    (g.RetellClient && (g.RetellClient.WebClient || g.RetellClient)) ||
-    (g.Retell && (g.Retell.WebClient || g.Retell.RetellWebClient));
-  if (fromKnown && !g.RetellWebClient) g.RetellWebClient = fromKnown;
-})();
+    (g.Retell && (g.Retell.WebClient || g.Retell.RetellWebClient)) ||
+    g.WebClient ||                         // some builds export this
+    (g.RetellClient && g.RetellClient.WebClient) ||
+    (g.RetellSDK && g.RetellSDK.WebClient);
+
+  if (ctor && !g.RetellWebClient) g.RetellWebClient = ctor;
+} catch(e){ console.error('[retell shim]', e); }})();
 `;
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    return res.end(js + '\n' + shim);
-  } catch (e) {
-    const rel = '/vendor/retell-client-js-sdk-2.0.7.umd.js';
-    res.status(404).end(
-      `console.error("Retell SDK missing: ${rel}");` +
-      `window.RetellSDKError="missing ${rel}";`
-    );
+
+app.get('/sdk/retell.v1.js', async (req, res) => {
+  res.type('application/javascript; charset=utf-8');
+
+  async function readLocal() {
+    const buf = await fs.readFile(RETELL_LOCAL);
+    if (buf.length < 5000) throw new Error('local SDK too small');
+    return buf;
   }
+
+  let sdk;
+  try {
+    // 1) local vendor first (normal path)
+    sdk = await readLocal();
+  } catch {
+    // 2) vendored file missing — try to fetch & cache
+    let lastErr;
+    for (const url of RETELL_CDNS) {
+      try {
+        const r = await fetch(url, { redirect: 'follow' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const text = await r.text();
+        if (!/Retell|WebClient|createCall|startCall/i.test(text) || text.length < 5000) {
+          throw new Error('bad sdk content');
+        }
+        await fs.mkdir(path.dirname(RETELL_LOCAL), { recursive: true });
+        await fs.writeFile(RETELL_LOCAL, text, 'utf8');
+        sdk = Buffer.from(text, 'utf8');
+        break;
+      } catch (e) { lastErr = e; }
+    }
+    if (!sdk) return res.status(503).end(`console.error("Retell SDK fetch failed");`);
+  }
+
+  // 3) append shim that exposes window.RetellWebClient
+  const out = Buffer.concat([sdk, Buffer.from(RETELL_SHIM, 'utf8')]);
+  res.set('Cache-Control', 'public, max-age=604800, immutable');
+  return res.end(out);
 });
+
 
 /* ------------------------------------------------------------------ */
 /* Static site                                                        */
