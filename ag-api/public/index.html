@@ -390,117 +390,102 @@
 
   <!-- Live Demo controller (robust loader: bundled Retell -> local LiveKit -> local Retell) -->
   <script>
-    const modal = document.getElementById('retell-modal');
-    const root  = document.getElementById('retell-root');
-    const close = document.getElementById('retell-close');
-    const btn   = document.getElementById('live-demo');
-    let client = null;
+  const modal = document.getElementById('retell-modal');
+  const root  = document.getElementById('retell-root');
+  const close = document.getElementById('retell-close');
+  const btn   = document.getElementById('live-demo');
+  let client = null;
 
-    const showModal = () => { modal.style.display = 'flex'; document.body.classList.add('modal-open'); };
-    const hideModal = () => {
-      modal.style.display = 'none';
-      document.body.classList.remove('modal-open');
-      root.innerHTML = '';
-      try { client?.endCall?.(); client?.hangUp?.(); } catch {}
-      client = null;
-    };
-    close?.addEventListener('click', hideModal);
+  const showModal = () => { modal.style.display = 'flex'; document.body.classList.add('modal-open'); };
+  const hideModal = () => {
+    modal.style.display = 'none';
+    document.body.classList.remove('modal-open');
+    root.innerHTML = '';
+    try { client?.endCall?.(); client?.hangUp?.(); } catch {}
+    client = null;
+  };
+  close?.addEventListener('click', hideModal);
 
-    function loadScript(src) {
-      return new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = src;
-        s.async = true;
-        s.crossOrigin = 'anonymous';
-        s.referrerPolicy = 'no-referrer';
-        s.onload = () => resolve(src);
-        s.onerror = () => reject(new Error('load error: ' + src));
-        document.head.appendChild(s);
-      });
-    }
-
-    function sniffRetellCtor() {
-      const w = window;
-      return w.RetellWebClient
-        || w.WebClient
-        || w.Retell?.WebClient
-        || (w.RetellClient && w.RetellClient.WebClient)
-        || (w.RetellSDK && w.RetellSDK.WebClient)
-        || null;
-    }
-
-
-  async function ensureLiveKit() {
-    const tries = [
-      '/vendor/livekit-client-1.18.3.umd.js', // local vendored file you have
-      'https://cdn.jsdelivr.net/npm/livekit-client@1.18.3/dist/livekit-client.umd.js',
-      'https://unpkg.com/livekit-client@1.18.3/dist/livekit-client.umd.js'
-    ];
-    let err;
-    for (const url of tries) {
-      try { await loadScript(url); return; } catch (e) { err = e; }
-    }
-    throw err || new Error('LiveKit failed to load from all sources');
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.async = true;
+      s.crossOrigin = 'anonymous';
+      s.referrerPolicy = 'no-referrer';
+      s.onload = () => resolve(src);
+      s.onerror = () => reject(new Error('load error: ' + src));
+      document.head.appendChild(s);
+    });
   }
 
+  // --- LiveKit (local UMD only; it's on /vendor) ---
+  async function ensureLiveKit() {
+    await loadScript('/vendor/livekit-client-1.18.3.umd.js?v=3');
+  }
 
+  // normalize whatever the UMD exports to window.RetellWebClient
+  function aliasRetell() {
+    const g = window;
+    const ctor =
+      g.RetellWebClient ||
+      (g.Retell && (g.Retell.WebClient || g.Retell.RetellWebClient)) ||
+      g.WebClient ||
+      (g.RetellClient && g.RetellClient.WebClient) ||
+      (g.RetellSDK && g.RetellSDK.WebClient);
+    if (ctor && !g.RetellWebClient) g.RetellWebClient = ctor;
+    return g.RetellWebClient || null;
+  }
+  function sniffRetellCtor() { aliasRetell(); return window.RetellWebClient || null; }
 
-    async function ensureRetellLocal() {
+  // Try /sdk route first; if it fails, fall back to the vendored UMD
+  async function ensureRetell() {
+    try {
       await loadScript('/sdk/retell.v1.js?fresh=1&v=' + Date.now());
       const Ctor = sniffRetellCtor();
-      if (!Ctor) throw new Error('Retell SDK not loaded (check /public/vendor file and /sdk route)');
+      if (!Ctor) throw new Error('no ctor after /sdk');
+      return Ctor;
+    } catch (e) {
+      console.warn('[retell] /sdk route failed, falling back to /vendor', e);
+      await loadScript('/vendor/retell-client-js-sdk-2.0.7.umd.js?v=1');
+      const Ctor = sniffRetellCtor();
+      if (!Ctor) throw new Error('Retell UMD loaded but no ctor');
       return Ctor;
     }
+  }
 
-    async function ensureSDK() {
-      // 1) Prefer official *bundled* builds (no LiveKit required)
-      const bundled = [
-        'https://sdk.retellai.com/retell-client-browser-sdk/latest/index.js',
-        'https://cdn.jsdelivr.net/npm/retell-client-browser-sdk@0.5/dist/index.js',
-        'https://unpkg.com/retell-client-browser-sdk@0.5/dist/index.js',
-      ];
-      for (const url of bundled) {
-        try { await loadScript(url); const C = sniffRetellCtor(); if (C) return C; } catch {}
-      }
-
-      // 2) Fallback: load LiveKit (local-first), then our local Retell shim
+  async function startLiveDemo() {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true }); // prompt mic first
       await ensureLiveKit();
-      return ensureRetellLocal();
-    }
+      const RetellWebClient = await ensureRetell();
 
-    async function startLiveDemo() {
-      try {
-        // Mic permission up front (clear UX)
-        await navigator.mediaDevices.getUserMedia({ audio: true });
+      showModal();
+      client = new RetellWebClient();
 
-        const RetellWebClient = await ensureSDK();
+      client.on?.('status', s => console.log('[retell:status]', s));
+      client.on?.('error',  e => console.error('[retell:error]', e));
+      client.on?.('call_ended', hideModal);
+      client.on?.('call-ended', hideModal);
 
-        showModal();
-        client = new RetellWebClient();
+      await client.createCall({ container: root, theme: 'dark' });
 
-        client.on?.('status', s => console.log('[retell:status]', s));
-        client.on?.('error',  e => console.error('[retell:error]', e));
-        client.on?.('call_ended', hideModal);
-        client.on?.('call-ended', hideModal);
-
-        await client.createCall({ container: root, theme: 'dark' });
-
-        const r = await fetch('/api/retell/create-web-call', { method: 'POST' });
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok || !data?.access_token) {
-          const msg = data?.error || `Token endpoint bad response (${r.status})`;
-          throw new Error(msg);
-        }
-
-        await client.startCall({ accessToken: data.access_token });
-      } catch (err) {
-        console.error('[live-demo]', err);
-        alert(`Could not start the live demo:\n${err.message || err}`);
-        hideModal();
+      const r = await fetch('/api/retell/create-web-call', { method: 'POST' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data?.access_token) {
+        const msg = data?.error || `Token endpoint bad response (${r.status})`;
+        throw new Error(msg);
       }
+      await client.startCall({ accessToken: data.access_token });
+    } catch (err) {
+      console.error('[live-demo]', err);
+      alert(`Could not start the live demo:\n${err.message || err}`);
+      hideModal();
     }
+  }
 
-    btn?.addEventListener('click', (e) => { e.preventDefault(); startLiveDemo(); });
-  </script>
+  btn?.addEventListener('click', (e) => { e.preventDefault(); startLiveDemo(); });
+</script>
+
 </body>
 </html>
