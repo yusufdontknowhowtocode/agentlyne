@@ -24,9 +24,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 /* ------------------------------------------------------------------ */
-/* fetch fallback (for Node runtimes without global fetch)             */
+/* fetch fallback (lazy, no top-level await)                           */
 /* ------------------------------------------------------------------ */
-const httpFetch = globalThis.fetch ?? (await import('node-fetch')).default;
+let cachedNodeFetch = null;
+async function getFetch() {
+  if (globalThis.fetch) return globalThis.fetch;
+  if (!cachedNodeFetch) {
+    const mod = await import('node-fetch');
+    cachedNodeFetch = mod.default || mod;
+  }
+  return cachedNodeFetch;
+}
 
 /* ------------------------------------------------------------------ */
 /* LiveKit UMD — local-first (auto-fetch & cache if missing)          */
@@ -51,6 +59,7 @@ app.get('/vendor/livekit-client-1.18.3.umd.js', async (_req, res) => {
     res.set('Cache-Control', 'public, max-age=31536000, immutable');
     return res.end(buf);
   } catch {
+    const httpFetch = await getFetch();
     for (const url of LIVEKIT_CDNS) {
       try {
         const r = await httpFetch(url, { redirect: 'follow' });
@@ -105,6 +114,7 @@ app.get('/sdk/retell.v1.js', async (_req, res) => {
   try {
     sdk = await readLocal();
   } catch {
+    const httpFetch = await getFetch();
     for (const url of RETELL_CDNS) {
       try {
         const r = await httpFetch(url, { redirect: 'follow' });
@@ -157,11 +167,45 @@ app.get('/api/static-check', async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* DB (IPv4 + SNI)                                                    */
+/* Utils                                                              */
 /* ------------------------------------------------------------------ */
+const clean = (s) => String(s ?? '').replace(/[\r\n]+/g, ' ').trim();
+function pick(obj, keys, def = '') { for (const k of keys) { if (obj && obj[k] != null && String(obj[k]).trim() !== '') return String(obj[k]); } return def; }
+function tzOffsetMinutesAt(tz, epochMs) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, timeZoneName: 'shortOffset', year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+    }).formatToParts(new Date(epochMs));
+    const name = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT';
+    const m = name.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/);
+    if (!m) return 0;
+    const sign = m[1].startsWith('-') ? -1 : 1;
+    const h = Math.abs(parseInt(m[1], 10));
+    const mm = m[2] ? parseInt(m[2], 10) : 0;
+    return sign * (h * 60 + mm);
+  } catch { return 0; }
+}
+function zonedToUtcISO(dateStr, timeStr, tz) {
+  if (!dateStr || !timeStr || !tz) return null;
+  try {
+    const [y,m,d] = dateStr.split('-').map(Number);
+    const [H,M]   = timeStr.split(':').map(Number);
+    const naiveUTC = Date.UTC(y, (m??1)-1, d??1, H??0, M??0, 0, 0);
+    const offMin   = tzOffsetMinutesAt(tz, naiveUTC);
+    return new Date(naiveUTC - offMin * 60 * 1000).toISOString();
+  } catch { return null; }
+}
+
+/* ------------------------------------------------------------------ */
+/* DB + SMTP + API bootstrap (no top-level await anywhere)            */
+/* ------------------------------------------------------------------ */
+
 const DB_URL = process.env.DATABASE_URL;
-let pool;
-if (DB_URL) {
+let pool = null;
+
+async function initDbPool() {
+  if (!DB_URL) { pool = new Pool(); return; }
   try {
     const u = new URL(DB_URL);
     const host = u.hostname;
@@ -186,8 +230,6 @@ if (DB_URL) {
       keepAlive: true,
     });
   }
-} else {
-  pool = new Pool();
 }
 
 async function ensureSchema() {
@@ -201,7 +243,6 @@ async function ensureSchema() {
   );`;
   try {
     await pool.query(createSql);
-    // NOTE: these are normal template literals (no leading backslash!)
     try { await pool.query(`ALTER TABLE bookings ALTER COLUMN name DROP NOT NULL;`); } catch {}
     try { await pool.query(`ALTER TABLE bookings ALTER COLUMN start_utc DROP NOT NULL;`); } catch {}
     console.log('DB schema ready');
@@ -209,11 +250,8 @@ async function ensureSchema() {
     console.error('book db ensure failed:', err?.message);
   }
 }
-await ensureSchema();
 
-/* ------------------------------------------------------------------ */
-/* Email (SMTP)                                                       */
-/* ------------------------------------------------------------------ */
+/* --- Email (SMTP) --- */
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecureEnv = String(process.env.SMTP_SECURE || '').toLowerCase();
 const smtpSecure = smtpSecureEnv ? ['1','true','yes','on'].includes(smtpSecureEnv) : smtpPort === 465;
@@ -234,41 +272,7 @@ transporter.verify()
   .then(() => console.log('SMTP ready'))
   .catch(e => console.warn('SMTP not ready:', e?.message));
 
-/* ------------------------------------------------------------------ */
-/* Utils                                                              */
-/* ------------------------------------------------------------------ */
-const clean = (s) => String(s ?? '').replace(/[\r\n]+/g, ' ').trim();
-function pick(obj, keys, def = '') { for (const k of keys) { if (obj && obj[k] != null && String(obj[k]).trim() !== '') return String(obj[k]); } return def; }
-function tzOffsetMinutesAt(tz, epochMs) {
-  try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz, timeZoneName: 'shortOffset', year:'numeric', month:'2-digit', day:'2-digit',
-      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
-    }).formatToParts(new Date(epochMs));
-    const name = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT';
-    // Proper regex: use \d inside a regex literal (NOT \\d)
-    const m = name.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/);
-    if (!m) return 0;
-    const sign = m[1].startsWith('-') ? -1 : 1;
-    const h = Math.abs(parseInt(m[1], 10));
-    const mm = m[2] ? parseInt(m[2], 10) : 0;
-    return sign * (h * 60 + mm);
-  } catch { return 0; }
-}
-function zonedToUtcISO(dateStr, timeStr, tz) {
-  if (!dateStr || !timeStr || !tz) return null;
-  try {
-    const [y,m,d] = dateStr.split('-').map(Number);
-    const [H,M]   = timeStr.split(':').map(Number);
-    const naiveUTC = Date.UTC(y, (m??1)-1, d??1, H??0, M??0, 0, 0);
-    const offMin   = tzOffsetMinutesAt(tz, naiveUTC);
-    return new Date(naiveUTC - offMin * 60 * 1000).toISOString();
-  } catch { return null; }
-}
-
-/* ------------------------------------------------------------------ */
-/* API                                                                */
-/* ------------------------------------------------------------------ */
+/* --- Simple API routes that depend on pool/transporter --- */
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/db-info', async (_req, res) => {
@@ -396,6 +400,7 @@ async function handleCreateWebCall(_req, res) {
     const agentId = process.env.RETELL_AGENT_ID;
     if (!apiKey || !agentId) return res.status(500).json({ error:'Missing RETELL_API_KEY or RETELL_AGENT_ID' });
 
+    const httpFetch = await getFetch();
     const resp = await httpFetch('https://api.retellai.com/v2/create-web-call', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -442,5 +447,16 @@ app.post('/api/retell/book_demo', async (req, res) => {
   } catch (err) { res.status(500).json({ ok:false, error:'server_error' }); }
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`API listening on :${PORT}`));
+/* --- Bootstrap --- */
+async function bootstrap() {
+  await initDbPool();
+  await ensureSchema();
+
+  const PORT = process.env.PORT || 10000;
+  app.listen(PORT, () => console.log(`API listening on :${PORT}`));
+}
+
+bootstrap().catch(err => {
+  console.error('Fatal bootstrap error:', err);
+  process.exit(1);
+});
