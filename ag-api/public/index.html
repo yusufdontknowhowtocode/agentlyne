@@ -429,17 +429,21 @@
         || null;
     }
 
-    async function ensureLiveKit() {
-      const tries = [
-        '/vendor/livekit-client-1.18.3.umd.js', // same-origin, server caches it
-        'https://cdn.jsdelivr.net/npm/livekit-client@1.18.3/dist/livekit-client.umd.js',
-        'https://unpkg.com/livekit-client@1.18.3/dist/livekit-client.umd.js'
-      ];
-      for (const url of tries) {
-        try { await loadScript(url); return; } catch {}
-      }
-      throw new Error('LiveKit failed to load from all sources');
+
+  async function ensureLiveKit() {
+    const tries = [
+      '/vendor/livekit-client-1.18.3.umd.js', // local vendored file you have
+      'https://cdn.jsdelivr.net/npm/livekit-client@1.18.3/dist/livekit-client.umd.js',
+      'https://unpkg.com/livekit-client@1.18.3/dist/livekit-client.umd.js'
+    ];
+    let err;
+    for (const url of tries) {
+      try { await loadScript(url); return; } catch (e) { err = e; }
     }
+    throw err || new Error('LiveKit failed to load from all sources');
+  }
+
+
 
     async function ensureRetellLocal() {
       await loadScript('/sdk/retell.v1.js?fresh=1&v=' + Date.now());
