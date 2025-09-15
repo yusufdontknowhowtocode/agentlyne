@@ -42,7 +42,7 @@
     header nav{white-space:nowrap}
   </style>
 
-  <!-- Minimal modal CSS -->
+  <!-- Minimal modal CSS (reusing your classes) -->
   <style>
     .retell-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.7);backdrop-filter:blur(6px);z-index:1000}
     .retell-card{width:min(92vw,420px);height:min(88vh,560px);background:#0b1020;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden}
@@ -259,29 +259,6 @@
     </div>
   </section>
 
-  <!-- Custom Workflow -->
-  <section class="section-light py-12">
-    <div class="wrap px-6">
-      <div class="workflow-unified mt-4">
-        <div class="wf-col wf-left">
-          <h3 class="text-slate-800 text-2xl md:text-3xl font-extrabold tracking-[-0.01em]">Custom <span class="text-brand-600">Workflows</span></h3>
-          <p class="text-slate-600 mt-2 max-w-xl">We map your intake, routing, and scheduling rules into a reliable voice flow.
-            You get fewer missed calls and more booked revenue.</p>
-          <div class="wf-mosaic" aria-hidden="true"></div>
-        </div>
-        <div class="wf-col wf-right">
-          <a href="book.html?intent=custom-workflows" class="wf-pill">CONTACT SALES</a>
-          <div class="features mt-6">
-            <div class="feat">Process discovery & KPI alignment</div>
-            <div class="feat">Tooling + CRM integration plan</div>
-            <div class="feat">Iterative prompt/voice tuning</div>
-            <div class="feat">Launch, monitor, refine</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- Footer -->
   <footer class="py-12">
     <div class="wrap px-6 flex items-center justify-between">
@@ -380,112 +357,53 @@
     })();
   </script>
 
-  <!-- Retell Modal -->
-  <div id="retell-modal" class="retell-modal" role="dialog" aria-modal="true" aria-label="Live demo">
+  <!-- Voice Demo Modal (OpenAI Realtime) -->
+  <div id="voice-modal" class="retell-modal" role="dialog" aria-modal="true" aria-label="Live demo">
     <div class="retell-card">
-      <button id="retell-close" class="retell-close" aria-label="Close">×</button>
-      <div id="retell-root" style="width:100%;height:100%;"></div>
+      <button id="voice-close" class="retell-close" aria-label="Close">×</button>
+      <div style="padding:20px;color:#e2e8f0">
+        <h3 style="font-weight:700;margin-bottom:6px">Live Voice Demo</h3>
+        <p style="opacity:.85">Your microphone is active. Say “Hi!”</p>
+        <p style="opacity:.7;font-size:12px;margin-top:12px">Tip: talk over the assistant to interrupt.</p>
+      </div>
     </div>
   </div>
 
-  <!-- Live Demo controller (robust loader: bundled Retell -> local LiveKit -> local Retell) -->
+  <!-- OpenAI Realtime client -->
+  <script src="/sdk/openai-realtime.v1.js?v=1"></script>
   <script>
-  const modal = document.getElementById('retell-modal');
-  const root  = document.getElementById('retell-root');
-  const close = document.getElementById('retell-close');
-  const btn   = document.getElementById('live-demo');
-  let client = null;
+    const voiceModal = document.getElementById('voice-modal');
+    const voiceClose = document.getElementById('voice-close');
+    const demoBtn    = document.getElementById('live-demo');
 
-  const showModal = () => { modal.style.display = 'flex'; document.body.classList.add('modal-open'); };
-  const hideModal = () => {
-    modal.style.display = 'none';
-    document.body.classList.remove('modal-open');
-    root.innerHTML = '';
-    try { client?.endCall?.(); client?.hangUp?.(); } catch {}
-    client = null;
-  };
-  close?.addEventListener('click', hideModal);
-
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = src;
-      s.async = true;
-      s.crossOrigin = 'anonymous';
-      s.referrerPolicy = 'no-referrer';
-      s.onload = () => resolve(src);
-      s.onerror = () => reject(new Error('load error: ' + src));
-      document.head.appendChild(s);
-    });
-  }
-
-  // --- LiveKit (local UMD only; it's on /vendor) ---
-  async function ensureLiveKit() {
-    await loadScript('/vendor/livekit-client-1.18.3.umd.js?v=3');
-  }
-
-  // normalize whatever the UMD exports to window.RetellWebClient
-  function aliasRetell() {
-    const g = window;
-    const ctor =
-      g.RetellWebClient ||
-      (g.Retell && (g.Retell.WebClient || g.Retell.RetellWebClient)) ||
-      g.WebClient ||
-      (g.RetellClient && g.RetellClient.WebClient) ||
-      (g.RetellSDK && g.RetellSDK.WebClient);
-    if (ctor && !g.RetellWebClient) g.RetellWebClient = ctor;
-    return g.RetellWebClient || null;
-  }
-  function sniffRetellCtor() { aliasRetell(); return window.RetellWebClient || null; }
-
-  // Try /sdk route first; if it fails, fall back to the vendored UMD
-  async function ensureRetell() {
-    try {
-      await loadScript('/sdk/retell.v1.js?fresh=1&v=' + Date.now());
-      const Ctor = sniffRetellCtor();
-      if (!Ctor) throw new Error('no ctor after /sdk');
-      return Ctor;
-    } catch (e) {
-      console.warn('[retell] /sdk route failed, falling back to /vendor', e);
-      await loadScript('/vendor/retell-client-js-sdk-2.0.7.umd.js?v=1');
-      const Ctor = sniffRetellCtor();
-      if (!Ctor) throw new Error('Retell UMD loaded but no ctor');
-      return Ctor;
+    function showModal() {
+      voiceModal.style.display = 'flex';
+      document.body.classList.add('modal-open');
     }
-  }
+    function hideModal() {
+      try { OpenAIRealtime.stop(); } catch {}
+      voiceModal.style.display = 'none';
+      document.body.classList.remove('modal-open');
+    }
+    voiceClose?.addEventListener('click', hideModal);
 
-  async function startLiveDemo() {
-    try {
-      await navigator.mediaDevices.getUserMedia({ audio: true }); // prompt mic first
-      await ensureLiveKit();
-      const RetellWebClient = await ensureRetell();
-
-      showModal();
-      client = new RetellWebClient();
-
-      client.on?.('status', s => console.log('[retell:status]', s));
-      client.on?.('error',  e => console.error('[retell:error]', e));
-      client.on?.('call_ended', hideModal);
-      client.on?.('call-ended', hideModal);
-
-      await client.createCall({ container: root, theme: 'dark' });
-
-      const r = await fetch('/api/retell/create-web-call', { method: 'POST' });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data?.access_token) {
-        const msg = data?.error || `Token endpoint bad response (${r.status})`;
-        throw new Error(msg);
+    async function startVoiceDemo() {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true }); // ask for mic first
+        showModal();
+        await OpenAIRealtime.start({
+          voice: 'verse',
+          instructions: 'You are a friendly Agentlyne receptionist. Greet quickly and keep answers under two sentences.'
+        });
+      } catch (err) {
+        console.error('[voice-demo]', err);
+        alert('Could not start the live demo:\n' + (err.message || err));
+        hideModal();
       }
-      await client.startCall({ accessToken: data.access_token });
-    } catch (err) {
-      console.error('[live-demo]', err);
-      alert(`Could not start the live demo:\n${err.message || err}`);
-      hideModal();
     }
-  }
 
-  btn?.addEventListener('click', (e) => { e.preventDefault(); startLiveDemo(); });
-</script>
-
+    demoBtn?.addEventListener('click', (e) => { e.preventDefault(); startVoiceDemo(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideModal(); });
+  </script>
 </body>
 </html>

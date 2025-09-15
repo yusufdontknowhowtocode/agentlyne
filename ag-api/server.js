@@ -37,124 +37,20 @@ async function getFetch() {
 }
 
 /* ------------------------------------------------------------------ */
-/* LiveKit UMD — local-first (auto-fetch & cache if missing)          */
-/* ------------------------------------------------------------------ */
-const LIVEKIT_LOCAL = path.join(PUBLIC_DIR, 'vendor', 'livekit-client-1.18.3.umd.js');
-const LIVEKIT_CDNS = [
-  'https://cdn.jsdelivr.net/npm/livekit-client@1.18.3/dist/livekit-client.umd.js',
-  'https://unpkg.com/livekit-client@1.18.3/dist/livekit-client.umd.js',
-];
-
-app.get('/vendor/livekit-client-1.18.3.umd.js', async (_req, res) => {
-  res.type('application/javascript; charset=utf-8');
-
-  async function readLocal() {
-    const buf = await fs.readFile(LIVEKIT_LOCAL);
-    if (buf.length < 5000) throw new Error('local LiveKit too small');
-    return buf;
-  }
-
-  try {
-    const buf = await readLocal();
-    res.set('Cache-Control', 'public, max-age=31536000, immutable');
-    return res.end(buf);
-  } catch {
-    const httpFetch = await getFetch();
-    for (const url of LIVEKIT_CDNS) {
-      try {
-        const r = await httpFetch(url, { redirect: 'follow' });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const text = await r.text();
-        if (text.length < 5000 || !/LiveKit|Room|connect/i.test(text)) {
-          throw new Error('bad LiveKit content');
-        }
-        await fs.mkdir(path.dirname(LIVEKIT_LOCAL), { recursive: true });
-        await fs.writeFile(LIVEKIT_LOCAL, text, 'utf8');
-        res.set('Cache-Control', 'public, max-age=31536000, immutable');
-        return res.end(text);
-      } catch {}
-    }
-    return res.status(503).end('console.error("LiveKit UMD fetch failed");');
-  }
-});
-
-/* ------------------------------------------------------------------ */
-/* Retell Web SDK — serve vendored UMD and shim to one global         */
-/* ------------------------------------------------------------------ */
-const RETELL_LOCAL = path.join(PUBLIC_DIR, 'vendor', 'retell-client-js-sdk-2.0.7.umd.js');
-const RETELL_CDNS = [
-  'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.7/dist/index.umd.js',
-  'https://unpkg.com/retell-client-js-sdk@2.0.7/dist/index.umd.js',
-];
-
-// Shim: normalize whatever the UMD exports to window.RetellWebClient
-const RETELL_SHIM = `
-;(()=>{try{
-  const g = window;
-  const ctor =
-    g.RetellWebClient ||
-    (g.Retell && (g.Retell.WebClient || g.Retell.RetellWebClient)) ||
-    g.WebClient ||
-    (g.RetellClient && g.RetellClient.WebClient) ||
-    (g.RetellSDK && g.RetellSDK.WebClient);
-  if (ctor && !g.RetellWebClient) g.RetellWebClient = ctor;
-} catch(e){ console.error('[retell shim]', e); }})();
-`;
-
-app.get('/sdk/retell.v1.js', async (_req, res) => {
-  res.type('application/javascript; charset=utf-8');
-
-  async function readLocal() {
-    const buf = await fs.readFile(RETELL_LOCAL);
-    if (buf.length < 5000) throw new Error('local SDK too small');
-    return buf;
-  }
-
-  let sdk;
-  try {
-    sdk = await readLocal();
-  } catch {
-    const httpFetch = await getFetch();
-    for (const url of RETELL_CDNS) {
-      try {
-        const r = await httpFetch(url, { redirect: 'follow' });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const text = await r.text();
-        if (!/Retell|WebClient|createCall|startCall/i.test(text) || text.length < 5000) {
-          throw new Error('bad sdk content');
-        }
-        await fs.mkdir(path.dirname(RETELL_LOCAL), { recursive: true });
-        await fs.writeFile(RETELL_LOCAL, text, 'utf8');
-        sdk = Buffer.from(text, 'utf8');
-        break;
-      } catch {}
-    }
-    if (!sdk) return res.status(503).end('console.error("Retell SDK fetch failed");');
-  }
-
-  const out = Buffer.concat([sdk, Buffer.from(RETELL_SHIM, 'utf8')]);
-  res.set('Cache-Control', 'public, max-age=604800, immutable');
-  return res.end(out);
-});
-
-/* ------------------------------------------------------------------ */
 /* Static site                                                        */
 /* ------------------------------------------------------------------ */
 app.use(express.static(PUBLIC_DIR, {
   extensions: ['html'],
   setHeaders: (res, filePath) => {
     const ext = path.extname(filePath).toLowerCase();
-    if (filePath.includes(`${path.sep}vendor${path.sep}`)) {
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    } else if (ext && ext !== '.html') {
+    if (ext && ext !== '.html') {
       res.setHeader('Cache-Control', 'public, max-age=300');
     }
   }
 }));
-
 app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
-// debug helper
+// Debug helper for static assets
 app.get('/api/static-check', async (req, res) => {
   try {
     const p = String(req.query.path || '');
@@ -198,7 +94,7 @@ function zonedToUtcISO(dateStr, timeStr, tz) {
 }
 
 /* ------------------------------------------------------------------ */
-/* DB + SMTP + API bootstrap (no top-level await anywhere)            */
+/* DB + SMTP bootstrap                                                */
 /* ------------------------------------------------------------------ */
 
 const DB_URL = process.env.DATABASE_URL;
@@ -272,7 +168,9 @@ transporter.verify()
   .then(() => console.log('SMTP ready'))
   .catch(e => console.warn('SMTP not ready:', e?.message));
 
-/* --- Simple API routes that depend on pool/transporter --- */
+/* ------------------------------------------------------------------ */
+/* API                                                                */
+/* ------------------------------------------------------------------ */
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/db-info', async (_req, res) => {
@@ -393,58 +291,44 @@ If anything changes, just reply to this email.
   }
 });
 
-/* Retell: mint Web Call token */
-async function handleCreateWebCall(_req, res) {
+/* ------------------------------------------------------------------ */
+/* OpenAI Realtime: mint ephemeral client session                      */
+/* ------------------------------------------------------------------ */
+app.post('/api/openai/realtime-session', async (req, res) => {
   try {
-    const apiKey = process.env.RETELL_API_KEY;
-    const agentId = process.env.RETELL_AGENT_ID;
-    if (!apiKey || !agentId) return res.status(500).json({ error:'Missing RETELL_API_KEY or RETELL_AGENT_ID' });
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Missing OPENAI_API_KEY' });
+
+    const voice = req.body?.voice || 'verse';
+    const instructions =
+      req.body?.instructions ||
+      'You are a friendly website guide for Agentlyne. Greet quickly, keep answers under two sentences, and help visitors understand benefits and pricing.';
 
     const httpFetch = await getFetch();
-    const resp = await httpFetch('https://api.retellai.com/v2/create-web-call', {
+    const r = await httpFetch('https://api.openai.com/v1/realtime/sessions', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent_id: agentId }),
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-realtime-preview',
+        voice,
+        modalities: ['text', 'audio'],
+        instructions
+      })
     });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok || !data?.access_token) {
-      console.error('Retell create-web-call failed:', resp.status, data);
-      return res.status(500).json({ error: data?.error || `Retell returned ${resp.status}`, details: data });
+
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data?.client_secret?.value) {
+      console.error('OpenAI realtime session failed:', r.status, data);
+      return res.status(500).json({ error: data?.error?.message || `OpenAI returned ${r.status}` });
     }
-    res.json({ access_token: data.access_token });
-  } catch (err) { res.status(500).json({ error: String(err) }); }
-}
-app.post('/api/retell/create-web-call', handleCreateWebCall);
-app.post('/api/retell/token', handleCreateWebCall);
-
-/* Retell: webhook for leads */
-app.post('/api/retell/book_demo', async (req, res) => {
-  try {
-    const { name, email, phone, company = '', notes = '' } = req.body || {};
-    if (!name || !email || !phone) return res.status(400).json({ ok:false, error:'missing_required_fields' });
-
-    try {
-      await pool.query(
-        `INSERT INTO bookings (full_name, name, email, phone, company, notes, source)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [name, name, email, phone, company || null, notes || null, 'retell_call']
-      );
-    } catch (e) { console.warn('retell lead save failed:', e?.message); }
-
-    try {
-      await transporter.sendMail({
-        from: FROM_EMAIL, to: SALES_EMAIL, replyTo: email,
-        subject: `New Retell call lead — ${name}`,
-        text: `New Retell call lead\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\nCompany: ${company || '-'}\n\nNotes:\n${(notes || '').trim() || '-'}`.trim()
-      });
-      await transporter.sendMail({
-        from: FROM_EMAIL, to: email, subject:`Thanks ${name}! We’ll send your demo details`,
-        text: `Hi ${name},\n\nThanks for calling! We’ve got your info:\n- Phone: ${phone}\n- Company: ${company || '-'}\n\nWe’ll follow up shortly with scheduling details.\n\n— Team Agentlyne`
-      });
-    } catch (e) { console.warn('retell mail send failed:', e?.message); }
-
-    res.json({ ok:true });
-  } catch (err) { res.status(500).json({ ok:false, error:'server_error' }); }
+    res.json({ client_secret: data.client_secret, model: data.model });
+  } catch (e) {
+    console.error('realtime-session error', e);
+    res.status(500).json({ error: 'server_error' });
+  }
 });
 
 /* --- Bootstrap --- */
