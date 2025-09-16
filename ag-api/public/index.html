@@ -40,10 +40,9 @@
     .btn-outline{background:transparent;color:#e2e8f0;border-color:rgba(255,255,255,.30)}
     .btn-outline:hover{background:rgba(255,255,255,.06)}
     header nav{white-space:nowrap}
-  </style>
-
-  <!-- Minimal modal CSS (reusing your classes) -->
-  <style>
+    /* make select look like our buttons */
+    select.btn {appearance:none;background:transparent;color:#e2e8f0;border-color:rgba(255,255,255,.30);padding-right:2rem}
+    select.btn:focus{outline:2px solid rgba(255,255,255,.25);outline-offset:2px}
     .retell-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.7);backdrop-filter:blur(6px);z-index:1000}
     .retell-card{width:min(92vw,420px);height:min(88vh,560px);background:#0b1020;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden}
     .retell-close{position:absolute;top:8px;right:10px;background:transparent;border:0;color:#fff;font-size:24px;cursor:pointer;z-index:1}
@@ -87,8 +86,15 @@
           <p class="text-lg text-slate-300/90 max-w-md mt-2">
             Our voice AI greets callers, qualifies leads, and schedules on your calendar—so revenue doesn't slip through the cracks.
           </p>
-          <div class="mt-6 flex gap-3">
+          <div class="mt-6 flex gap-3 items-center">
             <a id="live-demo" href="#" class="btn btn-primary" data-live-demo>Try the Live Demo</a>
+            <!-- simple voice chooser -->
+            <select id="voice-select" class="btn btn-outline" aria-label="Choose voice">
+              <option value="coral" selected>Coral (feminine)</option>
+              <option value="ballad">Ballad (feminine)</option>
+              <option value="shimmer">Shimmer (light)</option>
+              <option value="verse">Verse (neutral)</option>
+            </select>
             <a href="pricing.html" class="btn btn-outline">See Pricing</a>
           </div>
         </div>
@@ -375,6 +381,7 @@
     const voiceModal = document.getElementById('voice-modal');
     const voiceClose = document.getElementById('voice-close');
     const demoBtn    = document.getElementById('live-demo');
+    const voiceSel   = document.getElementById('voice-select');
 
     function showModal() {
       voiceModal.style.display = 'flex';
@@ -391,9 +398,18 @@
       try {
         await navigator.mediaDevices.getUserMedia({ audio: true }); // ask for mic first
         showModal();
+        const chosenVoice = (voiceSel?.value || 'coral');
+
         await OpenAIRealtime.start({
-          voice: 'ballad',
-          instructions: 'You are a friendly Agentlyne receptionist. Greet quickly and keep answers under two sentences.'
+          voice: chosenVoice,
+          // Style guidance to reduce "AI" vibe
+          instructions: [
+            "You are an Agentlyne receptionist with a warm, friendly, *human* tone.",
+            "Use a natural feminine delivery, relaxed pace, light smile in the voice.",
+            "Keep replies short (1–2 sentences), use contractions, vary sentence length.",
+            "Avoid robotic phrases or meta-comments (no 'As an AI').",
+            "Use tiny pauses and occasional conversational cues like 'Sure,' or 'Got it,' but keep them subtle."
+          ].join(' ')
         });
       } catch (err) {
         console.error('[voice-demo]', err);
