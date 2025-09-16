@@ -16,19 +16,22 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
   <link rel="manifest" href="/site.webmanifest">
 
-
-
-  <!-- Inline SVG fallback to ensure a tab icon even during cache weirdness -->
+  <!-- Inline SVG fallback so a tab icon shows during cache weirdness -->
   <link rel="icon" sizes="any"
         href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="%2359d0ff"/><stop offset="1" stop-color="%238a5cff"/></linearGradient></defs><rect rx="14" width="64" height="64" fill="%230b1020"/><path d="M32 10l18 10v14c0 10-8 20-18 20S14 44 14 34V20z" fill="url(%23g)"/></svg>'>
 
-  <!-- Fonts (match site) -->
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Calendly (only used if CALENDLY_URL is configured) -->
+  <link rel="preconnect" href="https://assets.calendly.com" crossorigin>
+  <link rel="stylesheet" href="https://assets.calendly.com/assets/external/widget.css">
+  <script async src="https://assets.calendly.com/assets/external/widget.js"></script>
 
   <!-- Site config + shared styles -->
   <script src="/config.js"></script>
@@ -59,7 +62,13 @@
     </header>
 
     <div class="grid lg:grid-cols-5 gap-6 items-start">
-      <!-- Sales form -->
+      <!-- Calendly container (auto shown if CALENDLY_URL is set) -->
+      <div id="calWrap" class="card p-0 overflow-hidden lg:col-span-3 hidden">
+        <!-- Calendly will inject here -->
+        <div id="calWidget"></div>
+      </div>
+
+      <!-- Sales form (fallback when Calendly not configured) -->
       <form id="bookForm" class="card p-5 lg:col-span-3" novalidate>
         <h2 class="text-xl font-extrabold">Book a call</h2>
 
@@ -141,6 +150,7 @@
     const API_BASE = (APP.API_BASE ?? '').trim() || '';
     const SUPPORT  = APP.SUPPORT_EMAIL || 'info@agentlyne.com';
     const BRAND    = APP.BRAND_NAME || 'Agentlyne';
+    const CAL      = (APP.CALENDLY_URL || '').trim(); // <- set this in /public/config.js
 
     const qs = new URLSearchParams(location.search);
     const PLAN   = (qs.get('plan')  || 'inbound').toLowerCase();
@@ -175,18 +185,41 @@
       document.getElementById('fTier').value   = TIER;
       document.getElementById('fIntent').value = INTENT;
 
+      // Prefill helpful notes
       const pretty = INTENT.replace(/[-_]+/g,' ').replace(/\b\w/g,s=>s.toUpperCase());
       const notes = form.querySelector('textarea[name="notes"]');
       if (notes && !notes.value.trim()) {
         notes.value = `Requested: ${pretty}\n\nKey details:\n• Team size / call volume\n• CRMs / tools\n• Hours of coverage\n• Any compliance needs`;
       }
 
+      // Time zone select
       const tzSelect = document.getElementById('tz');
       const current = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const zones = (Intl.supportedValuesOf && Intl.supportedValuesOf('timeZone')) || [current,'UTC'];
       [current, ...zones.filter(z=>z!==current)].forEach(z=>{
         const o=document.createElement('option'); o.value=o.textContent=z; tzSelect.appendChild(o);
       });
+
+      // Calendly embed if configured
+      if (CAL) {
+        const calWrap = document.getElementById('calWrap');
+        const calWidget = document.getElementById('calWidget');
+        calWrap.classList.remove('hidden');
+        form.style.display = 'none';
+
+        // Color params
+        const url = new URL(CAL);
+        const params = url.searchParams;
+        if (!params.has('primary_color'))    params.set('primary_color', '00b8a9');
+        if (!params.has('text_color'))       params.set('text_color', '0f172a');
+        if (!params.has('background_color')) params.set('background_color', 'f7f8ff');
+
+        calWidget.className = 'calendly-inline-widget';
+        calWidget.setAttribute('data-url', url.toString());
+        calWidget.style.minWidth = '320px';
+        calWidget.style.height   = '780px';
+      }
+
       try{
         localStorage.setItem('agentlyne_plan', PLAN);
         localStorage.setItem('agentlyne_tier', TIER);
@@ -194,6 +227,7 @@
       }catch{}
     })();
 
+    // Native booking submit (fallback when Calendly is not used)
     form.addEventListener('submit', async (e)=>{
       e.preventDefault();
       clearBanner();
@@ -233,6 +267,7 @@
       }
     });
 
+    // Suggest slots demo (fallback)
     document.getElementById('testSlot').addEventListener('click', async ()=>{
       const tz = document.getElementById('tz').value || 'UTC';
       const today = new Date().toISOString().slice(0,10);

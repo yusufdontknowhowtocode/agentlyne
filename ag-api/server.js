@@ -20,6 +20,13 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Force HTTPS behind a proxy (Render/Cloudflare/etc.)
+app.enable('trust proxy');
+app.use((req, res, next) => {
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') return next();
+  return res.redirect(301, 'https://' + req.headers.host + req.originalUrl);
+});
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
@@ -37,7 +44,24 @@ async function getFetch() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Static site                                                        */
+/* Dynamic runtime config (used by book/index pages)                   */
+/* ------------------------------------------------------------------ */
+// IMPORTANT: declare BEFORE the static middleware so it wins.
+app.get('/config.js', (_req, res) => {
+  const cfg = {
+    API_BASE: (process.env.API_BASE ?? ''),
+    SUPPORT_EMAIL: (process.env.SUPPORT_EMAIL ?? 'info@agentlyne.com'),
+    BRAND_NAME: (process.env.BRAND_NAME ?? 'Agentlyne'),
+    CALENDLY_URL: (process.env.CALENDLY_URL ?? ''),
+  };
+  const js = `window.APP_CONFIG = ${JSON.stringify(cfg, null, 2)};`;
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(js);
+});
+
+/* ------------------------------------------------------------------ */
+/* Static site                                                         */
 /* ------------------------------------------------------------------ */
 app.use(express.static(PUBLIC_DIR, {
   extensions: ['html'],
@@ -152,21 +176,26 @@ const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecureEnv = String(process.env.SMTP_SECURE || '').toLowerCase();
 const smtpSecure = smtpSecureEnv ? ['1','true','yes','on'].includes(smtpSecureEnv) : smtpPort === 465;
 
-const transporter = nodemailer.createTransport({
+const hasSMTP = !!process.env.SMTP_HOST;
+const transporter = hasSMTP ? nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: smtpPort,
   secure: smtpSecure,
-  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  auth: (process.env.SMTP_USER || process.env.SMTP_PASS) ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
   tls: { minVersion: 'TLSv1.2' },
   pool: true
-});
+}) : null;
 
 const FROM_EMAIL  = process.env.FROM_EMAIL  || 'Agentlyne <no-reply@agentlyne.com>';
 const SALES_EMAIL = process.env.SALES_EMAIL || 'sales@agentlyne.com';
 
-transporter.verify()
-  .then(() => console.log('SMTP ready'))
-  .catch(e => console.warn('SMTP not ready:', e?.message));
+if (transporter) {
+  transporter.verify()
+    .then(() => console.log('SMTP ready'))
+    .catch(e => console.warn('SMTP not ready:', e?.message));
+} else {
+  console.warn('SMTP disabled: missing SMTP_HOST env');
+}
 
 /* ------------------------------------------------------------------ */
 /* API                                                                */
@@ -201,11 +230,13 @@ app.post('/api/db-migrate', async (_req, res) => {
 });
 
 app.get('/api/email-verify', async (_req, res) => {
+  if (!transporter) return res.status(200).json({ ok:false, error:'smtp_disabled' });
   try { await transporter.verify(); res.json({ ok:true }); }
   catch (e) { res.status(500).json({ ok:false, error:e.message }); }
 });
 
 app.get('/api/email-test', async (req, res) => {
+  if (!transporter) return res.status(200).json({ ok:false, error:'smtp_disabled' });
   try {
     const to = clean(req.query.to || SALES_EMAIL || FROM_EMAIL);
     const info = await transporter.sendMail({ from: FROM_EMAIL, to, subject:'Agentlyne email test', text:'If you see this, SMTP works.' });
@@ -213,10 +244,12 @@ app.get('/api/email-test', async (req, res) => {
   } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
 });
 
+// Simple slot suggestions for the fallback form
 app.get('/api/slots', (req, res) => {
   const { date } = req.query;
   const base = date ? new Date(`${date}T09:00:00`) : new Date();
-  const slots = [60*10, 60*13, 60*15+30].map(min => { const d = new Date(base); d.setUTCHours(0, min, 0, 0); return d.toISOString(); });
+  const mins = [60*10, 60*13, 60*15 + 30];
+  const slots = mins.map(min => { const d = new Date(base); d.setUTCHours(0, min, 0, 0); return d.toISOString(); });
   res.json({ slots });
 });
 
@@ -254,7 +287,10 @@ app.post('/api/book', async (req, res) => {
       );
     } catch (e) { console.error('book db insert failed:', e?.message); }
 
-    const salesText = `
+    // Try to send emails, but don't fail the booking if SMTP is down
+    const emailStatus = { sales:false, user:false };
+    if (transporter) {
+      const salesText = `
 New booking request
 
 Name:    ${fullName}
@@ -268,9 +304,15 @@ Length:  ${duration} minutes
 
 Notes:
 ${(notes || '').trim() || '-'}
-`;
-    await transporter.sendMail({ from: FROM_EMAIL, to: SALES_EMAIL, replyTo: email, subject:`New booking — ${fullName} — ${date} ${time}`, text: salesText });
-    await transporter.sendMail({ from: FROM_EMAIL, to: email, subject:`We received your request — ${date} ${time}`, text:
+`.trim();
+
+      try {
+        await transporter.sendMail({ from: FROM_EMAIL, to: SALES_EMAIL, replyTo: email, subject:`New booking — ${fullName} — ${date} ${time}`, text: salesText });
+        emailStatus.sales = true;
+      } catch (e) { console.warn('sendMail(sales) failed:', e?.message); }
+
+      try {
+        await transporter.sendMail({ from: FROM_EMAIL, to: email, subject:`We received your request — ${date} ${time}`, text:
 `Thanks ${fullName}! We received your request and will get right back to you.
 
 What you submitted
@@ -283,8 +325,11 @@ What you submitted
 If anything changes, just reply to this email.
 
 — Team Agentlyne` });
+        emailStatus.user = true;
+      } catch (e) { console.warn('sendMail(user) failed:', e?.message); }
+    }
 
-    res.json({ ok:true });
+    res.json({ ok:true, email: emailStatus });
   } catch (err) {
     console.error('book error:', err);
     res.status(500).json({ ok:false, error:'Server error' });
