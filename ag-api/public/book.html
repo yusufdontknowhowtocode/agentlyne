@@ -23,6 +23,11 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <!-- Calendly perf -->
+  <link rel="preconnect" href="https://assets.calendly.com" crossorigin>
+  <link rel="preconnect" href="https://calendly.com" crossorigin>
+
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 
   <!-- Tailwind -->
@@ -50,7 +55,7 @@
     /* Calendly widget sizing */
     #calSection{ display:none; }
     #calSection .cal-card{ border-radius:20px; overflow:hidden; }
-    .calendly-inline-widget{ min-width:320px; height: 780px; }
+    #calMount{ min-width:320px; height: 780px; } /* Calendly will inject an <iframe> inside here */
   </style>
 </head>
 <body class="text-slate-900">
@@ -66,9 +71,9 @@
     </header>
 
     <!-- Calendly (full width when enabled) -->
-    <section id="calSection">
+    <section id="calSection" aria-label="Booking calendar">
       <div class="cal-card card p-0">
-        <div class="calendly-inline-widget" data-auto-load="false"></div>
+        <div id="calMount"></div>
       </div>
     </section>
 
@@ -149,6 +154,9 @@
     </div>
   </div>
 
+  <!-- Calendly embed library (loads once, used programmatically) -->
+  <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
+
   <script>
     const APP      = window.APP_CONFIG || {};
     const API_BASE = (APP.API_BASE ?? '').trim() || '';
@@ -163,31 +171,38 @@
 
     const api = p => `${API_BASE}${p}`;
 
-    // --- Calendly on? Hide grid, show full-width iframe
+    /* ---------- Calendly mount (programmatic, robust) ---------- */
     (function calendlyMount(){
       if (!/^https?:\/\//.test(CAL_URL)) return; // no Calendly configured
       document.body.classList.add('cal-on');
 
-      const mount = document.querySelector('#calSection .calendly-inline-widget');
-      mount.setAttribute('data-url', CAL_URL);
-
-      function init() {
-        if (window.Calendly && Calendly.initInlineWidgets) {
-          Calendly.initInlineWidgets();
+      const mount = document.getElementById('calMount');
+      function tryInit(){
+        if (!window.Calendly || !Calendly.initInlineWidget) return false;
+        try {
+          Calendly.initInlineWidget({
+            url: CAL_URL,
+            parentElement: mount,
+            // you can pass prefill / utm here if needed
+          });
+          return true;
+        } catch(e){
+          console.warn('[Calendly] init failed:', e);
+          return false;
         }
       }
-      if (!window.Calendly) {
-        const s = document.createElement('script');
-        s.src = 'https://assets.calendly.com/assets/external/widget.js';
-        s.async = true;
-        s.onload = init;
-        document.head.appendChild(s);
-      } else {
-        init();
+
+      // If the lib hasn't loaded yet, retry a few times
+      if (!tryInit()){
+        let tries = 0;
+        const t = setInterval(()=>{
+          tries++;
+          if (tryInit() || tries > 20) clearInterval(t); // ~2s max
+        }, 100);
       }
     })();
 
-    // --- Fallback form logic (used when Calendly is not set)
+    /* ---------- Fallback form logic (only when no Calendly) ---------- */
     const banner = document.getElementById('banner');
     const form   = document.getElementById('bookForm');
     const btn    = document.getElementById('bookBtn');
@@ -195,13 +210,9 @@
     function setBanner(kind, text) {
       if (!banner) return;
       banner.className = "mb-4 rounded-xl border p-3 text-sm";
-      if (kind === 'ok') {
-        banner.classList.add('bg-emerald-50','border-emerald-200','text-emerald-700');
-      } else if (kind === 'warn') {
-        banner.classList.add('bg-amber-50','border-amber-200','text-amber-700');
-      } else {
-        banner.classList.add('bg-rose-50','border-rose-200','text-rose-700');
-      }
+      if (kind === 'ok')      banner.classList.add('bg-emerald-50','border-emerald-200','text-emerald-700');
+      else if (kind === 'warn') banner.classList.add('bg-amber-50','border-amber-200','text-amber-700');
+      else                      banner.classList.add('bg-rose-50','border-rose-200','text-rose-700');
       banner.textContent = text;
       banner.classList.remove('hidden');
     }
