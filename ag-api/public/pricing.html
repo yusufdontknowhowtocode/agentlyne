@@ -6,9 +6,19 @@
   <title>Pricing — Agentlyne</title>
   <meta name="theme-color" content="#0ea5e9" />
   <meta name="description" content="Simple, transparent pricing for Agentlyne voice AI reception and outbound agents." />
+
+  <!-- Favicons -->
+  <link rel="icon" href="/favicon.svg?v=3" type="image/svg+xml">
+  <link rel="alternate icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="manifest" href="/site.webmanifest">
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind (ok for now; consider bundling later for prod) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -23,7 +33,9 @@
       }
     }
   </script>
+
   <link rel="stylesheet" href="style.css" />
+
   <style>
     body{ background:#f7f8ff }
     .pill{border:1px solid rgba(2,8,23,.10);background:#fff}
@@ -137,7 +149,6 @@
     <!-- Outbound -->
     <section id="outbound" class="mt-14 scroll-mt-28">
       <div class="grid-two">
-        <!-- Removed the header CTA; just the heading now -->
         <h2 class="text-2xl font-extrabold md:col-span-2">Outbound Campaigns</h2>
 
         <article class="price-card p-6">
