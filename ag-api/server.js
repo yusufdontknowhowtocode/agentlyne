@@ -54,10 +54,9 @@ app.get('/config.js', (_req, res) => {
     BRAND_NAME: (process.env.BRAND_NAME ?? 'Agentlyne'),
     CALENDLY_URL: (process.env.CALENDLY_URL ?? ''),
   };
-  const js = `window.APP_CONFIG = ${JSON.stringify(cfg, null, 2)};`;
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
-  res.send(js);
+  res.send(`window.APP_CONFIG = ${JSON.stringify(cfg, null, 2)};`);
 });
 
 /* ------------------------------------------------------------------ */
@@ -67,9 +66,7 @@ app.use(express.static(PUBLIC_DIR, {
   extensions: ['html'],
   setHeaders: (res, filePath) => {
     const ext = path.extname(filePath).toLowerCase();
-    if (ext && ext !== '.html') {
-      res.setHeader('Cache-Control', 'public, max-age=300');
-    }
+    if (ext && ext !== '.html') res.setHeader('Cache-Control', 'public, max-age=300');
   }
 }));
 app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
@@ -116,8 +113,6 @@ function zonedToUtcISO(dateStr, timeStr, tz) {
     return new Date(naiveUTC - offMin * 60 * 1000).toISOString();
   } catch { return null; }
 }
-
-// helpers for ICS local wall-times
 const p2 = v => v.toString().padStart(2,'0');
 function buildLocalIso(dateStr, timeStr, addMinutes = 0) {
   const [y,m,d] = dateStr.split('-').map(Number);
@@ -125,8 +120,6 @@ function buildLocalIso(dateStr, timeStr, addMinutes = 0) {
   const dt = new Date(y, m - 1, d, H, M + addMinutes, 0);
   return `${dt.getFullYear()}-${p2(dt.getMonth()+1)}-${p2(dt.getDate())}T${p2(dt.getHours())}:${p2(dt.getMinutes())}:${p2(dt.getSeconds())}`;
 }
-
-// pretty label for confirmation email
 function prettyWhen(startISO, endISO, tz) {
   try {
     const s = new Date(startISO), e = new Date(endISO);
@@ -138,16 +131,17 @@ function prettyWhen(startISO, endISO, tz) {
 }
 
 /* ------------------------------------------------------------------ */
-/* DB + SMTP bootstrap                                                */
+/* DB (optional) + SMTP bootstrap                                     */
 /* ------------------------------------------------------------------ */
 
-const DB_URL = process.env.DATABASE_URL;
+// ---- DB (optional)
+const USE_DB = !!process.env.DATABASE_URL;
 let pool = null;
 
 async function initDbPool() {
-  if (!DB_URL) { pool = new Pool(); return; }
+  if (!USE_DB) { console.log('DB: disabled (no DATABASE_URL)'); return; }
   try {
-    const u = new URL(DB_URL);
+    const u = new URL(process.env.DATABASE_URL);
     const host = u.hostname;
     const port = Number(u.port || 5432);
     const user = decodeURIComponent(u.username || '');
@@ -161,62 +155,56 @@ async function initDbPool() {
       ssl: sslRequired ? { rejectUnauthorized: false, servername: host } : undefined,
       keepAlive: true,
     });
-    console.log('DB mode: IPv4 (static env)', address, `(SNI: ${host}) user: ${user}`);
+    console.log('DB: IPv4 pool ready ->', host);
   } catch (err) {
-    console.warn('DB IPv4 resolve failed; fallback to connectionString:', err?.message);
-    pool = new Pool({
-      connectionString: DB_URL,
-      ssl: DB_URL?.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
-      keepAlive: true,
-    });
+    console.warn('DB init failed:', err?.message);
   }
 }
-
 async function ensureSchema() {
-  const createSql = `
-  CREATE TABLE IF NOT EXISTS bookings (
-    id BIGSERIAL PRIMARY KEY,
-    created_at timestamptz DEFAULT now(),
-    name text, full_name text, email text, phone text, company text, notes text,
-    timezone text, start_utc timestamptz, end_utc timestamptz, duration_min integer,
-    source text, date date, "time" text
-  );`;
+  if (!pool) return; // skip if DB disabled
   try {
-    await pool.query(createSql);
-    try { await pool.query(`ALTER TABLE bookings ALTER COLUMN name DROP NOT NULL;`); } catch {}
-    try { await pool.query(`ALTER TABLE bookings ALTER COLUMN start_utc DROP NOT NULL;`); } catch {}
-    console.log('DB schema ready');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bookings (
+        id BIGSERIAL PRIMARY KEY,
+        created_at timestamptz DEFAULT now(),
+        name text, full_name text, email text, phone text, company text, notes text,
+        timezone text, start_utc timestamptz, end_utc timestamptz, duration_min integer,
+        source text, date date, "time" text
+      );
+    `);
+    console.log('DB: schema ready');
   } catch (err) {
-    console.error('book db ensure failed:', err?.message);
+    console.error('DB ensure schema failed:', err?.message);
   }
 }
 
-/* --- Email (SMTP) --- */
+// ---- SMTP
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecureEnv = String(process.env.SMTP_SECURE || '').toLowerCase();
 const smtpSecure = smtpSecureEnv ? ['1','true','yes','on'].includes(smtpSecureEnv) : smtpPort === 465;
-
-const hasSMTP = !!process.env.SMTP_HOST;
-const transporter = hasSMTP ? nodemailer.createTransport({
-  host: process.env.SMTP_HOST,                          // Mailgun: smtp.mailgun.org
-  port: smtpPort,                                      // 587
-  secure: smtpSecure,                                  // false for 587, true for 465
-  auth: (process.env.SMTP_USER || process.env.SMTP_PASS) ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
-  tls: { minVersion: 'TLSv1.2' },
-  pool: true
-}) : null;
 
 const BRAND = process.env.BRAND_NAME || 'Agentlyne';
 const FROM_ADDR = process.env.SMTP_FROM || process.env.FROM_EMAIL || 'no-reply@agentlyne.com';
 const FROM_EMAIL = `${BRAND} <${FROM_ADDR}>`;
 const SALES_EMAIL = process.env.BOOKINGS_INBOX || process.env.SALES_EMAIL || `sales@agentlyne.com`;
 
+const transporter = process.env.SMTP_HOST ? nodemailer.createTransport({
+  host: process.env.SMTP_HOST,        // Mailgun: smtp.mailgun.org
+  port: smtpPort,                     // 587
+  secure: smtpSecure,                 // false for 587, true for 465
+  auth: (process.env.SMTP_USER || process.env.SMTP_PASS) ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
+  tls: { minVersion: 'TLSv1.2' },
+  pool: true,
+  logger: !!process.env.SMTP_DEBUG,   // set SMTP_DEBUG=1 to see SMTP convo
+  debug: !!process.env.SMTP_DEBUG
+}) : null;
+
 if (transporter) {
   transporter.verify()
-    .then(() => console.log('SMTP ready'))
-    .catch(e => console.warn('SMTP not ready:', e?.message));
+    .then(() => console.log('SMTP: ready (host=%s, port=%d)', process.env.SMTP_HOST, smtpPort))
+    .catch(e => console.warn('SMTP verify failed:', e?.message));
 } else {
-  console.warn('SMTP disabled: missing SMTP_HOST env');
+  console.warn('SMTP: disabled (missing SMTP_HOST)');
 }
 
 /* ---- ICS builder (TZID, no UTC headaches) ---- */
@@ -250,20 +238,19 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/db-info', async (_req, res) => {
   try {
+    if (!pool) return res.json({ ok:false, disabled:true });
     const cols = await pool.query(`
       SELECT column_name
       FROM information_schema.columns
       WHERE table_schema='public' AND table_name='bookings'
       ORDER BY ordinal_position
     `);
-    const u = DB_URL ? new URL(DB_URL) : null;
+    const u = new URL(process.env.DATABASE_URL);
     res.json({
       ok: true,
-      user: u?.username || null,
-      host: u?.hostname || null,
-      port: u ? Number(u.port || 5432) : null,
-      db: u ? (u.pathname || '/').replace('/','') : null,
-      sslRequired: u ? u.searchParams.get('sslmode') === 'require' : null,
+      user: u.username, host: u.hostname, port: Number(u.port || 5432),
+      db: (u.pathname || '/').replace('/',''),
+      sslRequired: u.searchParams.get('sslmode') === 'require',
       mode: 'IPv4 (static env)',
       columns: cols.rows.map(r => r.column_name)
     });
@@ -271,18 +258,18 @@ app.get('/api/db-info', async (_req, res) => {
 });
 
 app.post('/api/db-migrate', async (_req, res) => {
-  try { await ensureSchema(); res.json({ ok:true }); }
+  try { await ensureSchema(); res.json({ ok:true, disabled: !pool }); }
   catch (e) { res.status(500).json({ ok:false, error:e.message }); }
 });
 
 app.get('/api/email-verify', async (_req, res) => {
-  if (!transporter) return res.status(200).json({ ok:false, error:'smtp_disabled' });
+  if (!transporter) return res.json({ ok:false, error:'smtp_disabled' });
   try { await transporter.verify(); res.json({ ok:true }); }
   catch (e) { res.status(500).json({ ok:false, error:e.message }); }
 });
 
 app.get('/api/email-test', async (req, res) => {
-  if (!transporter) return res.status(200).json({ ok:false, error:'smtp_disabled' });
+  if (!transporter) return res.json({ ok:false, error:'smtp_disabled' });
   try {
     const to = clean(req.query.to || SALES_EMAIL || FROM_EMAIL);
     const info = await transporter.sendMail({ from: FROM_EMAIL, to, subject:'Agentlyne email test', text:'If you see this, SMTP works.' });
@@ -300,6 +287,17 @@ app.get('/api/slots', (req, res) => {
 });
 
 app.post('/api/book', async (req, res) => {
+  // Minimal, sanitized log so you can trace bookings in Render logs
+  console.log('BOOK req:', {
+    fullName: req.body?.fullName,
+    email: req.body?.email,
+    date: req.body?.date,
+    time: req.body?.time,
+    timeZone: req.body?.timeZone,
+    duration: req.body?.duration,
+    source: req.body?.source
+  });
+
   try {
     const b = req.body || {};
     const fullName = clean(pick(b, ['fullName','full_name','name']));
@@ -308,51 +306,50 @@ app.post('/api/book', async (req, res) => {
     const company  = clean(pick(b, ['company','org']));
     const date     = clean(pick(b, ['date']));
     const time     = clean(pick(b, ['time']));
-    const timeZone = clean(pick(b, ['timeZone','timezone','tz']));
+    const timeZone = clean(pick(b, ['timeZone','timezone','tz'])) || 'UTC';
     const notes    = String(pick(b, ['notes','message']));
-    const duration = Number(pick(b, ['duration'], 60)) || 60; // default to 60 now
+    const duration = Number(pick(b, ['duration'], 60)) || 60;
     const plan     = clean(pick(b, ['plan']));
     const tier     = clean(pick(b, ['tier']));
     const source   = clean(pick(b, ['source'], 'pricing'));
 
     if (!fullName || !email || !date || !time) {
+      console.warn('BOOK 400 missing fields');
       return res.status(400).json({ ok:false, error:'Missing required fields: fullName, email, date, time.' });
     }
 
-    // Store UTC times for analytics
-    const startISO = zonedToUtcISO(date, time, timeZone || 'UTC');
+    // Store UTC times for analytics (if you enable DB)
+    const startISO = zonedToUtcISO(date, time, timeZone);
     const endISO   = startISO ? new Date(new Date(startISO).getTime() + duration * 60000).toISOString() : null;
 
-    try {
-      await pool.query(
-        `INSERT INTO bookings
-         (full_name, name, email, phone, company, notes, timezone,
-          start_utc, end_utc, duration_min, source, date, "time")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-        [fullName, fullName, email, phone, company, notes || null, timeZone || null,
-         startISO, endISO, duration, source, date || null, time || null]
-      );
-    } catch (e) { console.error('book db insert failed:', e?.message); }
+    if (pool) {
+      try {
+        await pool.query(
+          `INSERT INTO bookings
+           (full_name, name, email, phone, company, notes, timezone,
+            start_utc, end_utc, duration_min, source, date, "time")
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [fullName, fullName, email, phone, company, notes || null, timeZone,
+           startISO, endISO, duration, source, date || null, time || null]
+        );
+      } catch (e) { console.warn('BOOK db insert failed:', e?.message); }
+    }
 
-    // Email: ICS invite to user + internal notification
+    // Emails
     const emailStatus = { sales:false, user:false };
     if (transporter) {
-      // build ICS using local wall time with TZID
-      const startLocal = buildLocalIso(date, time, 0);
-      const endLocal   = buildLocalIso(date, time, duration);
-      const ics = icsInvite({
-        title: `${BRAND} — Intro Call (pending confirmation)`,
-        description: `With: ${fullName}${company ? ` (${company})` : ''}\nPhone: ${phone || '—'}`,
-        startLocal,
-        endLocal,
-        tzid: timeZone || 'UTC',
-        organizerEmail: FROM_ADDR,
-        organizerName: BRAND,
-      });
-
-      // Send to guest (thank-you body)
       try {
-        const whenLabel = prettyWhen(startISO, endISO, timeZone || 'UTC');
+        // ICS built with local wall-time + TZID
+        const startLocal = buildLocalIso(date, time, 0);
+        const endLocal   = buildLocalIso(date, time, duration);
+        const ics = icsInvite({
+          title: `${BRAND} — Intro Call (pending confirmation)`,
+          description: `With: ${fullName}${company ? ` (${company})` : ''}\nPhone: ${phone || '—'}`,
+          startLocal, endLocal, tzid: timeZone,
+          organizerEmail: FROM_ADDR, organizerName: BRAND,
+        });
+
+        const whenLabel = prettyWhen(startISO, endISO, timeZone) || `${date} ${time} ${timeZone}`;
         const html = `
           <div style="font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a">
             <h2 style="margin:0 0 8px 0">${BRAND}</h2>
@@ -362,7 +359,7 @@ app.post('/api/book', async (req, res) => {
             </p>
             <div style="margin:16px 0;padding:12px 14px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc">
               <div style="font-weight:700">Requested time</div>
-              <div>${whenLabel || `${date} ${time} ${timeZone || ''}`}</div>
+              <div>${whenLabel}</div>
             </div>
             <p style="margin:8px 0">We’ve attached a calendar invite. If you need to change anything, just reply to this email.</p>
             <p style="margin:18px 0 0 0">— Team ${BRAND}</p>
@@ -375,38 +372,15 @@ app.post('/api/book', async (req, res) => {
           replyTo: process.env.SUPPORT_EMAIL || FROM_ADDR,
           subject: `Thanks for booking — we’ll confirm call details soon`,
           text: `Thanks for booking a call with ${BRAND}! We’ll reply shortly with the call information and next steps.
-Requested time: ${whenLabel || `${date} ${time} ${timeZone || ''}`}
+Requested time: ${whenLabel}
 A calendar invite is attached. If you need to change anything, just reply to this email.
 
 — Team ${BRAND}`,
           html,
-          attachments: [{
-            filename: 'invite.ics',
-            content: ics,
-            contentType: 'text/calendar; charset=utf-8; method=REQUEST',
-          }],
+          attachments: [{ filename:'invite.ics', content: ics, contentType:'text/calendar; charset=utf-8; method=REQUEST' }]
         });
         emailStatus.user = true;
-      } catch (e) {
-        console.warn('sendMail(user) failed:', e?.message);
-      }
-
-      // Internal notification
-      const salesText = `
-New booking request
-
-Name:    ${fullName}
-Email:   ${email}
-Phone:   ${phone || '-'}
-Company: ${company || '-'}
-
-Plan:    ${plan} ${tier}
-When:    ${date} ${time} (${timeZone || 'tz not set'})
-Length:  ${duration} minutes
-
-Notes:
-${(notes || '').trim() || '-'}
-`.trim();
+      } catch (e) { console.warn('BOOK sendMail(user) failed:', e?.message); }
 
       try {
         await transporter.sendMail({
@@ -414,17 +388,32 @@ ${(notes || '').trim() || '-'}
           to: SALES_EMAIL,
           replyTo: email,
           subject: `New booking — ${fullName} — ${date} ${time}`,
-          text: salesText,
+          text:
+`New booking request
+
+Name:    ${fullName}
+Email:   ${email}
+Phone:   ${phone || '-'}
+Company: ${company || '-'}
+
+Plan:    ${plan} ${tier}
+When:    ${date} ${time} (${timeZone})
+Length:  ${duration} minutes
+
+Notes:
+${(notes || '-')}
+`
         });
         emailStatus.sales = true;
-      } catch (e) {
-        console.warn('sendMail(sales) failed:', e?.message);
-      }
+      } catch (e) { console.warn('BOOK sendMail(sales) failed:', e?.message); }
+    } else {
+      console.warn('BOOK: transporter missing, email not sent');
     }
 
-    res.json({ ok:true, email: emailStatus });
+    console.log('BOOK ok -> email:', emailStatus);
+    res.json({ ok:true, email: emailStatus, debug: { db: !!pool, startISO, endISO } });
   } catch (err) {
-    console.error('book error:', err);
+    console.error('BOOK 500:', err);
     res.status(500).json({ ok:false, error:'Server error' });
   }
 });
