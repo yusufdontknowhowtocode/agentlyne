@@ -4,6 +4,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import nodemailer from 'nodemailer';
+import crypto from 'crypto';
 import { Pool } from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -117,6 +118,15 @@ function zonedToUtcISO(dateStr, timeStr, tz) {
   } catch { return null; }
 }
 
+// helpers for ICS local wall-times
+const p2 = v => v.toString().padStart(2,'0');
+function buildLocalIso(dateStr, timeStr, addMinutes = 0) {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const [H,M]   = timeStr.split(':').map(Number);
+  const dt = new Date(y, m - 1, d, H, M + addMinutes, 0);
+  return `${dt.getFullYear()}-${p2(dt.getMonth()+1)}-${p2(dt.getDate())}T${p2(dt.getHours())}:${p2(dt.getMinutes())}:${p2(dt.getSeconds())}`;
+}
+
 /* ------------------------------------------------------------------ */
 /* DB + SMTP bootstrap                                                */
 /* ------------------------------------------------------------------ */
@@ -178,16 +188,18 @@ const smtpSecure = smtpSecureEnv ? ['1','true','yes','on'].includes(smtpSecureEn
 
 const hasSMTP = !!process.env.SMTP_HOST;
 const transporter = hasSMTP ? nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: smtpPort,
-  secure: smtpSecure,
+  host: process.env.SMTP_HOST,                          // Mailgun: smtp.mailgun.org
+  port: smtpPort,                                      // 587
+  secure: smtpSecure,                                  // false for 587, true for 465
   auth: (process.env.SMTP_USER || process.env.SMTP_PASS) ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
   tls: { minVersion: 'TLSv1.2' },
   pool: true
 }) : null;
 
-const FROM_EMAIL  = process.env.FROM_EMAIL  || 'Agentlyne <no-reply@agentlyne.com>';
-const SALES_EMAIL = process.env.SALES_EMAIL || 'sales@agentlyne.com';
+const BRAND = process.env.BRAND_NAME || 'Agentlyne';
+const FROM_ADDR = process.env.SMTP_FROM || process.env.FROM_EMAIL || 'no-reply@agentlyne.com';
+const FROM_EMAIL = `${BRAND} <${FROM_ADDR}>`;
+const SALES_EMAIL = process.env.BOOKINGS_INBOX || process.env.SALES_EMAIL || `sales@agentlyne.com`;
 
 if (transporter) {
   transporter.verify()
@@ -195,6 +207,30 @@ if (transporter) {
     .catch(e => console.warn('SMTP not ready:', e?.message));
 } else {
   console.warn('SMTP disabled: missing SMTP_HOST env');
+}
+
+/* ---- ICS builder (TZID, no UTC headaches) ---- */
+function icsInvite({ title, description, startLocal, endLocal, tzid, organizerEmail, organizerName='Agentlyne' }) {
+  const uid = crypto.randomUUID();
+  const stamp = new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
+  const fmt = s => s.replaceAll('-','').replaceAll(':',''); // 'YYYYMMDDTHHMMSS'
+  return [
+    'BEGIN:VCALENDAR',
+    'PRODID:-//Agentlyne//Booking//EN',
+    'VERSION:2.0',
+    'CALSCALE:GREGORIAN',
+    'METHOD:REQUEST',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${stamp}`,
+    `DTSTART;TZID=${tzid}:${fmt(startLocal)}`,
+    `DTEND;TZID=${tzid}:${fmt(endLocal)}`,
+    `SUMMARY:${title}`,
+    `DESCRIPTION:${(description || '').replace(/\n/g,'\\n')}`,
+    `ORGANIZER;CN=${organizerName}:mailto:${organizerEmail}`,
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
 }
 
 /* ------------------------------------------------------------------ */
@@ -264,7 +300,7 @@ app.post('/api/book', async (req, res) => {
     const time     = clean(pick(b, ['time']));
     const timeZone = clean(pick(b, ['timeZone','timezone','tz']));
     const notes    = String(pick(b, ['notes','message']));
-    const duration = Number(pick(b, ['duration'], 30)) || 30;
+    const duration = Number(pick(b, ['duration'], 60)) || 60; // default to 60 now
     const plan     = clean(pick(b, ['plan']));
     const tier     = clean(pick(b, ['tier']));
     const source   = clean(pick(b, ['source'], 'pricing'));
@@ -273,6 +309,7 @@ app.post('/api/book', async (req, res) => {
       return res.status(400).json({ ok:false, error:'Missing required fields: fullName, email, date, time.' });
     }
 
+    // Store UTC times for analytics
     const startISO = zonedToUtcISO(date, time, timeZone || 'UTC');
     const endISO   = startISO ? new Date(new Date(startISO).getTime() + duration * 60000).toISOString() : null;
 
@@ -287,9 +324,43 @@ app.post('/api/book', async (req, res) => {
       );
     } catch (e) { console.error('book db insert failed:', e?.message); }
 
-    // Try to send emails, but don't fail the booking if SMTP is down
+    // Email: ICS invite to user + internal notification
     const emailStatus = { sales:false, user:false };
     if (transporter) {
+      // build ICS using local wall time with TZID
+      const startLocal = buildLocalIso(date, time, 0);
+      const endLocal   = buildLocalIso(date, time, duration);
+      const ics = icsInvite({
+        title: `${BRAND} — Intro Call`,
+        description: `With: ${fullName}${company ? ` (${company})` : ''}\nPhone: ${phone || '—'}`,
+        startLocal,
+        endLocal,
+        tzid: timeZone || 'UTC',
+        organizerEmail: FROM_ADDR,
+        organizerName: BRAND,
+      });
+
+      // Send to guest
+      try {
+        await transporter.sendMail({
+          from: FROM_EMAIL,
+          to: email,
+          replyTo: process.env.SUPPORT_EMAIL || FROM_ADDR,
+          subject: `Your ${BRAND} intro call`,
+          text: 'Your calendar invite is attached. We look forward to speaking!',
+          html: '<p>Your calendar invite is attached. We look forward to speaking!</p>',
+          attachments: [{
+            filename: 'invite.ics',
+            content: ics,
+            contentType: 'text/calendar; charset=utf-8; method=REQUEST',
+          }],
+        });
+        emailStatus.user = true;
+      } catch (e) {
+        console.warn('sendMail(user) failed:', e?.message);
+      }
+
+      // Internal notification
       const salesText = `
 New booking request
 
@@ -307,26 +378,17 @@ ${(notes || '').trim() || '-'}
 `.trim();
 
       try {
-        await transporter.sendMail({ from: FROM_EMAIL, to: SALES_EMAIL, replyTo: email, subject:`New booking — ${fullName} — ${date} ${time}`, text: salesText });
+        await transporter.sendMail({
+          from: FROM_EMAIL,
+          to: SALES_EMAIL,
+          replyTo: email,
+          subject: `New booking — ${fullName} — ${date} ${time}`,
+          text: salesText,
+        });
         emailStatus.sales = true;
-      } catch (e) { console.warn('sendMail(sales) failed:', e?.message); }
-
-      try {
-        await transporter.sendMail({ from: FROM_EMAIL, to: email, subject:`We received your request — ${date} ${time}`, text:
-`Thanks ${fullName}! We received your request and will get right back to you.
-
-What you submitted
-- Email: ${email}
-- Phone: ${phone || '-'}
-- Company: ${company || '-'}
-- Plan: ${plan} ${tier}
-- Preferred time: ${date} ${time} ${timeZone || ''}
-
-If anything changes, just reply to this email.
-
-— Team Agentlyne` });
-        emailStatus.user = true;
-      } catch (e) { console.warn('sendMail(user) failed:', e?.message); }
+      } catch (e) {
+        console.warn('sendMail(sales) failed:', e?.message);
+      }
     }
 
     res.json({ ok:true, email: emailStatus });
