@@ -127,6 +127,17 @@ function buildLocalIso(dateStr, timeStr, addMinutes = 0) {
   return `${dt.getFullYear()}-${p2(dt.getMonth()+1)}-${p2(dt.getDate())}T${p2(dt.getHours())}:${p2(dt.getMinutes())}:${p2(dt.getSeconds())}`;
 }
 
+// pretty label for confirmation email
+function prettyWhen(startISO, endISO, tz) {
+  try {
+    const s = new Date(startISO), e = new Date(endISO);
+    const d  = new Intl.DateTimeFormat('en-US', { weekday:'short', month:'short', day:'numeric', timeZone: tz }).format(s);
+    const t1 = new Intl.DateTimeFormat('en-US', { hour:'numeric', minute:'2-digit', timeZone: tz }).format(s);
+    const t2 = new Intl.DateTimeFormat('en-US', { hour:'numeric', minute:'2-digit', timeZone: tz }).format(e);
+    return `${d} • ${t1}–${t2} (${tz})`;
+  } catch { return ''; }
+}
+
 /* ------------------------------------------------------------------ */
 /* DB + SMTP bootstrap                                                */
 /* ------------------------------------------------------------------ */
@@ -331,7 +342,7 @@ app.post('/api/book', async (req, res) => {
       const startLocal = buildLocalIso(date, time, 0);
       const endLocal   = buildLocalIso(date, time, duration);
       const ics = icsInvite({
-        title: `${BRAND} — Intro Call`,
+        title: `${BRAND} — Intro Call (pending confirmation)`,
         description: `With: ${fullName}${company ? ` (${company})` : ''}\nPhone: ${phone || '—'}`,
         startLocal,
         endLocal,
@@ -340,15 +351,36 @@ app.post('/api/book', async (req, res) => {
         organizerName: BRAND,
       });
 
-      // Send to guest
+      // Send to guest (updated subject + body)
       try {
+        const whenLabel = prettyWhen(startISO, endISO, timeZone || 'UTC');
+        const html = `
+          <div style="font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a">
+            <h2 style="margin:0 0 8px 0">${BRAND}</h2>
+            <p style="margin:0 0 10px 0">
+              Thanks for booking a call with ${BRAND}! We’ll reply shortly with the call information
+              (Zoom/Google Meet) and next steps.
+            </p>
+            <div style="margin:16px 0;padding:12px 14px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc">
+              <div style="font-weight:700">Requested time</div>
+              <div>${whenLabel || `${date} ${time} ${timeZone || ''}`}</div>
+            </div>
+            <p style="margin:8px 0">We’ve attached a calendar invite. If you need to change anything, just reply to this email.</p>
+            <p style="margin:18px 0 0 0">— Team ${BRAND}</p>
+          </div>
+        `.trim();
+
         await transporter.sendMail({
           from: FROM_EMAIL,
           to: email,
           replyTo: process.env.SUPPORT_EMAIL || FROM_ADDR,
-          subject: `Your ${BRAND} intro call`,
-          text: 'Your calendar invite is attached. We look forward to speaking!',
-          html: '<p>Your calendar invite is attached. We look forward to speaking!</p>',
+          subject: `Thanks for booking — we’ll confirm call details soon`,
+          text: `Thanks for booking a call with ${BRAND}! We’ll reply shortly with the call information and next steps.
+Requested time: ${whenLabel || `${date} ${time} ${timeZone || ''}`}
+A calendar invite is attached. If you need to change anything, just reply to this email.
+
+— Team ${BRAND}`,
+          html,
           attachments: [{
             filename: 'invite.ics',
             content: ics,
