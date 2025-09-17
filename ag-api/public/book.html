@@ -9,7 +9,6 @@
   <meta name="color-scheme" content="dark light" />
   <link rel="canonical" href="https://agentlyne.com/book.html" />
 
-  <!-- Favicons -->
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
@@ -20,27 +19,24 @@
   <link rel="icon" sizes="any"
         href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="%2359d0ff"/><stop offset="1" stop-color="%238a5cff"/></linearGradient></defs><rect rx="14" width="64" height="64" fill="%230b1020"/><path d="M32 10l18 10v14c0 10-8 20-18 20S14 44 14 34V20z" fill="url(%23g)"/></svg>'>
 
-  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-  <!-- Calendly perf -->
-  <link rel="preconnect" href="https://assets.calendly.com" crossorigin>
-  <link rel="preconnect" href="https://calendly.com" crossorigin>
-
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 
-  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Site config + shared styles -->
   <script src="/config.js"></script>
   <link rel="stylesheet" href="style.css" />
 
   <style>
+    *,*::before,*::after{box-sizing:border-box}
     :root{ --brand-500:#00e0d8; --brand-600:#00b8a9; }
-    body{ background:#f7f8ff; font-family: Manrope, ui-sans-serif, system-ui }
-    .card{ background:#fff;border:1px solid rgba(2,8,23,.08);border-radius:20px;box-shadow:0 12px 32px rgba(2,8,23,.06) }
+    body{ background:#f7f8ff; font-family: Manrope, ui-sans-serif, system-ui; color:#0f172a; }
+
+    .panel{
+      background:#fff; border:1px solid rgba(2,8,23,.08); border-radius:20px;
+      box-shadow:0 12px 32px rgba(2,8,23,.06);
+    }
     .ring-brand{ box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--brand-500) 35%, transparent) }
     .btn{ display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:9999px;padding:.75rem 1.25rem;font-weight:700;transition:transform .15s, box-shadow .15s }
     .btn-primary{ color:#fff;background:linear-gradient(135deg,var(--brand-500),var(--brand-600));box-shadow:0 10px 28px color-mix(in oklab, var(--brand-600) 28%, transparent) }
@@ -48,18 +44,28 @@
     .btn-ghost{ border:2px solid rgba(2,8,23,.12); background:#fff; color:#0f172a }
     .chip{ display:inline-flex; align-items:center; gap:.5rem; padding:.35rem .7rem; border-radius:9999px; background:#fff; border:1px solid rgba(2,8,23,.12); color:#0f172a; font-weight:800 }
 
-    /* Calendly layout toggle */
-    .cal-on #formGrid{ display:none; }   /* hide form+aside when Calendly is on */
-    .cal-on #calSection{ display:block; }
+    .layout{ display:grid; gap:1.5rem; grid-template-columns:minmax(0,1fr); align-items:start; }
+    @media (min-width:1024px){
+      .layout{ grid-template-columns:minmax(0,1fr) 420px; gap:2rem; }
+      .sticky-aside{ position:sticky; top:6rem; }
+    }
 
-    /* Calendly widget sizing */
-    #calSection{ display:none; }
-    #calSection .cal-card{ border-radius:20px; overflow:hidden; }
-    #calMount{ min-width:320px; height: 780px; } /* Calendly will inject an <iframe> inside here */
+    /* Force light inputs (and native pickers) on this page */
+    .book-page .panel, .book-page form{ color-scheme: light; }
+    .book-page input,.book-page textarea,.book-page select{
+      background:#fff !important; color:#0f172a !important; border:1px solid rgba(2,8,23,.12) !important;
+      outline:none; -webkit-appearance:none; appearance:none;
+    }
+    .book-page input::placeholder,.book-page textarea::placeholder{ color:#94a3b8; }
+    .book-page select{ background-image:none; }
+
+    /* Neutralize any global `.card` positioning here */
+    .book-page .card{ position:static !important; transform:none !important; }
   </style>
 </head>
-<body class="text-slate-900">
-  <div class="max-w-4xl mx-auto px-6 py-10">
+
+<body class="text-slate-900 book-page">
+  <div class="max-w-6xl mx-auto px-6 py-10">
     <header class="mb-8">
       <a href="pricing.html" class="text-slate-500 hover:text-slate-700">&larr; Back to Pricing</a>
       <h1 id="pageTitle" class="mt-2 text-4xl font-extrabold tracking-tight" style="font-family: Space Grotesk, Manrope, ui-sans-serif">Talk to sales</h1>
@@ -70,19 +76,10 @@
       </p>
     </header>
 
-    <!-- Calendly (full width when enabled) -->
-    <section id="calSection" aria-label="Booking calendar">
-      <div class="cal-card card p-0">
-        <div id="calMount"></div>
-      </div>
-    </section>
-
-    <!-- Fallback form + aside (hidden when Calendly is on) -->
-    <div id="formGrid" class="grid lg:grid-cols-5 gap-6 items-start">
-      <!-- Sales form -->
-      <form id="bookForm" class="card p-5 lg:col-span-3" novalidate>
+    <div class="layout">
+      <!-- LEFT: Form -->
+      <form id="bookForm" class="panel p-5 min-w-0" novalidate>
         <h2 class="text-xl font-extrabold">Book a call</h2>
-
         <div id="banner" class="hidden mb-4 rounded-xl border p-3 text-sm" aria-live="polite"></div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -107,11 +104,14 @@
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
           <label class="block">
             <span class="text-sm font-semibold">Date</span>
-            <input name="date" type="date" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+            <input name="date" id="dateInput" type="date" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
           </label>
           <label class="block">
             <span class="text-sm font-semibold">Time</span>
-            <input name="time" type="time" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+            <!-- HOURLY SELECT -->
+            <select name="time" id="timeSel" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none">
+              <option value="" disabled selected>Select time</option>
+            </select>
           </label>
           <label class="block">
             <span class="text-sm font-semibold">Time zone</span>
@@ -126,6 +126,7 @@
           </label>
         </div>
 
+        <!-- Hidden context -->
         <input type="hidden" name="plan"   id="fPlan" />
         <input type="hidden" name="tier"   id="fTier" />
         <input type="hidden" name="intent" id="fIntent" />
@@ -137,8 +138,8 @@
         </div>
       </form>
 
-      <!-- Right column -->
-      <aside class="card p-5 lg:col-span-2">
+      <!-- RIGHT: Info -->
+      <aside class="panel p-5 sticky-aside min-w-0">
         <h3 class="text-lg font-bold">What happens next?</h3>
         <ul class="mt-3 space-y-2 text-sm">
           <li>• You’ll get a calendar invite by email (.ics attached).</li>
@@ -154,58 +155,26 @@
     </div>
   </div>
 
-  <!-- Calendly embed library (loads once, used programmatically) -->
-  <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
-
   <script>
     const APP      = window.APP_CONFIG || {};
     const API_BASE = (APP.API_BASE ?? '').trim() || '';
     const SUPPORT  = APP.SUPPORT_EMAIL || 'info@agentlyne.com';
     const BRAND    = APP.BRAND_NAME || 'Agentlyne';
-    const CAL_URL  = (APP.CALENDLY_URL || '').trim();
+
+    // ✅ Config: change these for your working hours (24h)
+    const WORK_HOURS = { start: 9, end: 17 }; // 9:00 -> 17:00 inclusive (1-hr steps)
 
     const qs = new URLSearchParams(location.search);
     const PLAN   = (qs.get('plan')  || 'inbound').toLowerCase();
     const TIER   = (qs.get('tier')  || 'starter').toLowerCase();
     const INTENT = (qs.get('intent')|| `${PLAN}-${TIER}`);
 
-    const api = p => `${API_BASE}${p}`;
-
-    /* ---------- Calendly mount (programmatic, robust) ---------- */
-    (function calendlyMount(){
-      if (!/^https?:\/\//.test(CAL_URL)) return; // no Calendly configured
-      document.body.classList.add('cal-on');
-
-      const mount = document.getElementById('calMount');
-      function tryInit(){
-        if (!window.Calendly || !Calendly.initInlineWidget) return false;
-        try {
-          Calendly.initInlineWidget({
-            url: CAL_URL,
-            parentElement: mount,
-            // you can pass prefill / utm here if needed
-          });
-          return true;
-        } catch(e){
-          console.warn('[Calendly] init failed:', e);
-          return false;
-        }
-      }
-
-      // If the lib hasn't loaded yet, retry a few times
-      if (!tryInit()){
-        let tries = 0;
-        const t = setInterval(()=>{
-          tries++;
-          if (tryInit() || tries > 20) clearInterval(t); // ~2s max
-        }, 100);
-      }
-    })();
-
-    /* ---------- Fallback form logic (only when no Calendly) ---------- */
+    const api    = p => `${API_BASE}${p}`;
     const banner = document.getElementById('banner');
     const form   = document.getElementById('bookForm');
     const btn    = document.getElementById('bookBtn');
+    const timeSel= document.getElementById('timeSel');
+    const dateInput = document.getElementById('dateInput');
 
     function setBanner(kind, text) {
       if (!banner) return;
@@ -218,20 +187,49 @@
     }
     function clearBanner(){ if(banner){ banner.className='hidden'; banner.textContent=''; } }
 
+    function pad2(n){ return String(n).padStart(2,'0'); }
+    function toHourLabel(h){
+      const isPM = h >= 12;
+      const h12 = ((h + 11) % 12) + 1;
+      return `${h12} ${isPM ? 'PM' : 'AM'}`;
+    }
+    function buildTimeOptions(){
+      if(!timeSel) return;
+      timeSel.innerHTML = '<option value="" disabled selected>Select time</option>';
+      for(let h = WORK_HOURS.start; h <= WORK_HOURS.end; h++){
+        const opt = document.createElement('option');
+        opt.value = `${pad2(h)}:00`;   // submit as "HH:00"
+        opt.textContent = toHourLabel(h);
+        timeSel.appendChild(opt);
+      }
+    }
+    function setMinDateToday(){
+      if(!dateInput) return;
+      const now = new Date();
+      // local date in YYYY-MM-DD (no tz shift)
+      const y = now.getFullYear();
+      const m = pad2(now.getMonth()+1);
+      const d = pad2(now.getDate());
+      dateInput.min = `${y}-${m}-${d}`; // ⬅ disables/grays out past days
+    }
+
     (function init(){
       document.title = `Book — ${BRAND}`;
       const cap = s => s ? s[0].toUpperCase()+s.slice(1) : s;
       document.getElementById('chipPlan').textContent = cap(PLAN);
       document.getElementById('chipTier').textContent = cap(TIER);
-      const fPlan=document.getElementById('fPlan'), fTier=document.getElementById('fTier'), fIntent=document.getElementById('fIntent');
-      if(fPlan) fPlan.value=PLAN; if(fTier) fTier.value=TIER; if(fIntent) fIntent.value=INTENT;
+      document.getElementById('fPlan').value   = PLAN;
+      document.getElementById('fTier').value   = TIER;
+      document.getElementById('fIntent').value = INTENT;
 
+      // Notes starter
       const notes = form?.querySelector('textarea[name="notes"]');
       if (notes && !notes.value.trim()) {
         const pretty = INTENT.replace(/[-_]+/g,' ').replace(/\b\w/g,s=>s.toUpperCase());
         notes.value = `Requested: ${pretty}\n\nKey details:\n• Team size / call volume\n• CRMs / tools\n• Hours of coverage\n• Any compliance needs`;
       }
 
+      // Timezone select
       const tzSelect = document.getElementById('tz');
       if (tzSelect) {
         const current = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -240,6 +238,10 @@
           const o=document.createElement('option'); o.value=o.textContent=z; tzSelect.appendChild(o);
         });
       }
+
+      // Build hourly times + min date
+      buildTimeOptions();
+      setMinDateToday();
 
       try{
         localStorage.setItem('agentlyne_plan', PLAN);
@@ -252,13 +254,19 @@
       e.preventDefault();
       clearBanner();
 
+      // Prevent past date submission (extra guard)
+      if (dateInput && dateInput.value && dateInput.min && dateInput.value < dateInput.min){
+        setBanner('err', 'Please choose a date that is today or later.');
+        return;
+      }
+
       const fd = new FormData(form);
       const payload = Object.fromEntries(fd.entries());
-      payload.plan   = PLAN;
-      payload.tier   = TIER;
-      payload.intent = INTENT;
-      payload.source = 'pricing';
-      payload.duration = 30;
+      payload.plan     = PLAN;
+      payload.tier     = TIER;
+      payload.intent   = INTENT;
+      payload.source   = 'pricing';
+      payload.duration = 60; // since slots are hourly now
 
       btn.disabled = true; btn.textContent = 'Booking…';
 
@@ -278,6 +286,8 @@
         document.getElementById('fPlan').value   = PLAN;
         document.getElementById('fTier').value   = TIER;
         document.getElementById('fIntent').value = INTENT;
+        setMinDateToday();       // keep past days disabled after reset
+        buildTimeOptions();      // rebuild to restore placeholder
       } catch (err) {
         console.error('book error:', err);
         setBanner('err', `Something went wrong. Please try again${SUPPORT ? ` or email ${SUPPORT}.` : '.'}`);
@@ -286,6 +296,7 @@
       }
     });
 
+    // Suggest times -> fill date + nearest hour in the select
     document.getElementById('testSlot')?.addEventListener('click', async ()=>{
       const tzSel = document.getElementById('tz');
       const tz = tzSel ? tzSel.value : 'UTC';
@@ -305,10 +316,14 @@
           const b = document.createElement('button');
           b.className='px-3 py-2 rounded-lg border hover:bg-slate-100 text-sm';
           b.type='button';
-          b.textContent=d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+          b.textContent=d.toLocaleTimeString([], {hour:'numeric'});
           b.onclick=()=>{
-            form.querySelector('input[name="date"]').value = d.toISOString().slice(0,10);
-            form.querySelector('input[name="time"]').value = d.toISOString().slice(11,16);
+            // set date
+            const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), da = String(d.getDate()).padStart(2,'0');
+            dateInput.value = `${y}-${m}-${da}`;
+            // set time to top of the hour in select
+            const hhmm = `${String(d.getHours()).padStart(2,'0')}:00`;
+            timeSel.value = hhmm;
             if (tzSel) tzSel.value = tz;
             wrap.innerHTML = '';
           };
