@@ -3,13 +3,17 @@
  * - STUN + keepalive pings
  * - Disable Opus DTX (prevents NAT idle timeouts)
  * - Auto-reconnect on disconnect/failed
- * - Forwards assistant text to window.AGENT_BOOKING.onAssistantText
+ * - Parses <<BOOK>>{...} from assistant output and POSTs /api/book
+ * - Still forwards assistant text to window.AGENT_BOOKING.onAssistantText(finalText)
  */
 (function () {
   let current = null;
   let lastOpts = null;
   let reconnectTimer = null;
   let pingTimer = null;
+
+  // prevent duplicate posts if a response is retried
+  const postedResponseIds = new Set();
 
   function scheduleReconnect(reason, delay = 800) {
     if (reconnectTimer) return;
@@ -19,6 +23,53 @@
       try { stop(); } catch {}
       if (lastOpts) start(lastOpts).catch(e => console.error('reconnect failed:', e));
     }, delay);
+  }
+
+  // ---- booking parsing + POST ----
+  function tryParseBookingLine(finalText) {
+    // Be forgiving: find any line that starts with <<BOOK>>
+    const line = (finalText || '')
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .find(s => s.startsWith('<<BOOK>>'));
+    if (!line) return null;
+
+    const raw = line.slice('<<BOOK>>'.length).trim();
+    try {
+      const obj = JSON.parse(raw);
+      // minimal validation
+      const need = ['fullName', 'email', 'date', 'time', 'timeZone'];
+      const missing = need.filter(k => !obj?.[k] || String(obj[k]).trim() === '');
+      if (missing.length) {
+        console.warn('[book] missing fields from agent:', missing, obj);
+        return null;
+      }
+      if (!obj.duration) obj.duration = 60;
+      if (!obj.source) obj.source = 'voice-agent';
+      return obj;
+    } catch (e) {
+      console.warn('[book] bad JSON from agent:', raw, e);
+      return null;
+    }
+  }
+
+  function postBooking(payload) {
+    console.log('[book] posting:', payload);
+    return fetch('/api/book', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(j => {
+      console.log('[book] server response:', j);
+      if (!j?.ok) console.warn('[book] NOT OK:', j);
+      return j;
+    })
+    .catch(e => {
+      console.error('[book] post failed:', e);
+      throw e;
+    });
   }
 
   async function start({ voice = 'verse', instructions } = {}) {
@@ -40,8 +91,6 @@
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }
-        // If you have TURN, add it here:
-        // { urls: 'turn:YOUR_TURN_HOST:3478', username: 'user', credential: 'pass' }
       ],
       bundlePolicy: 'balanced',
       iceTransportPolicy: 'all'
@@ -53,7 +102,6 @@
         try { pc.restartIce(); } catch {}
         scheduleReconnect('ice failed', 500);
       } else if (pc.iceConnectionState === 'disconnected') {
-        // give it a moment to recover, then reconnect
         scheduleReconnect('ice disconnected', 1500);
       }
     });
@@ -96,8 +144,8 @@
     };
     dcKeep.onclose = () => { if (pingTimer) { clearInterval(pingTimer); pingTimer = null; } };
 
-    // 5) OpenAI emits an "oai-events" channel with response events
-    let dc = null;
+    // 5) Handle ANY incoming datachannel; parse events and also raw text
+    let eventsDc = null;
     const buffers = Object.create(null); // responseId -> aggregated text
 
     function getResponseId(m) {
@@ -121,8 +169,17 @@
         case 'response.completed': {
           const id = getResponseId(msg);
           const finalText = (id && buffers[id] != null) ? buffers[id] : '';
+          // Forward to optional hook
           if (finalText && window.AGENT_BOOKING?.onAssistantText) {
             try { window.AGENT_BOOKING.onAssistantText(finalText); } catch {}
+          }
+          // Booking capture
+          if (finalText && id && !postedResponseIds.has(id)) {
+            const payload = tryParseBookingLine(finalText);
+            if (payload) {
+              postedResponseIds.add(id);
+              postBooking(payload).catch(()=>{});
+            }
           }
           if (id) delete buffers[id];
           break;
@@ -135,13 +192,31 @@
         }
       }
     }
+
     pc.ondatachannel = (e) => {
-      if (e.channel.label !== 'oai-events') return;
-      dc = e.channel;
-      dc.onmessage = (ev) => { if (typeof ev.data === 'string') handleEventMessage(ev.data); };
-      dc.onclose = () => console.log('[oai-events] closed');
-      dc.onerror = (err) => console.warn('[oai-events] error', err);
-      window.oaiRTCPeer = { pc, dc }; // expose for other scripts
+      const ch = e.channel;
+      console.log('[webrtc] datachannel:', ch.label);
+      // If OpenAI emits "oai-events", parse the structured events.
+      if (ch.label === 'oai-events') {
+        eventsDc = ch;
+        ch.onmessage = (ev) => { if (typeof ev.data === 'string') handleEventMessage(ev.data); };
+      } else {
+        // Fallback: if any plain text comes through, scan for booking line.
+        ch.onmessage = (ev) => {
+          const s = (typeof ev.data === 'string') ? ev.data : '';
+          if (!s) return;
+          // Try immediate parse (some models might push the whole text here)
+          const payload = tryParseBookingLine(s);
+          if (payload) postBooking(payload).catch(()=>{});
+          // Also forward raw text to hook
+          if (window.AGENT_BOOKING?.onAssistantText) {
+            try { window.AGENT_BOOKING.onAssistantText(s); } catch {}
+          }
+        };
+      }
+      ch.onclose = () => console.log('[dc] closed:', ch.label);
+      ch.onerror = (err) => console.warn('[dc] error', ch.label, err);
+      window.oaiRTCPeer = { pc, dc: eventsDc || ch }; // expose for other scripts
     };
 
     // 6) offer/answer via HTTPS SDP
@@ -163,8 +238,9 @@
     const answerSdp = await resp.text();
     await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
-    current = { pc, mic, audioEl, dc, dcKeep };
-    window.oaiRTCPeer = { pc, dc };
+    current = { pc, mic, audioEl, eventsDc, dcKeep };
+    window.oaiRTCPeer = { pc, dc: eventsDc };
+    console.log('[webrtc] connected');
     return current;
   }
 
@@ -172,7 +248,7 @@
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
     try { current?.dcKeep?.close?.(); } catch {}
-    try { current?.dc?.close?.(); } catch {}
+    try { current?.eventsDc?.close?.(); } catch {}
     try {
       current?.pc?.getSenders()?.forEach(s => { try { s.track && s.track.stop(); } catch {} });
       current?.pc?.close?.();

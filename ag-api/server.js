@@ -195,7 +195,7 @@ const transporter = process.env.SMTP_HOST ? nodemailer.createTransport({
   auth: (process.env.SMTP_USER || process.env.SMTP_PASS) ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
   tls: { minVersion: 'TLSv1.2' },
   pool: true,
-  logger: !!process.env.SMTP_DEBUG,   // set SMTP_DEBUG=1 to see SMTP convo
+  logger: !!process.env.SMTP_DEBUG,
   debug: !!process.env.SMTP_DEBUG
 }) : null;
 
@@ -277,7 +277,7 @@ app.get('/api/email-test', async (req, res) => {
   } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
 });
 
-// Simple slot suggestions for the fallback form
+/* ---- Slot suggestions (fallback UI) ---- */
 app.get('/api/slots', (req, res) => {
   const { date } = req.query;
   const base = date ? new Date(`${date}T09:00:00`) : new Date();
@@ -286,20 +286,26 @@ app.get('/api/slots', (req, res) => {
   res.json({ slots });
 });
 
+/* ---- In-memory dedupe for quick repeats ---- */
+const DEDUP_SECONDS = Number(process.env.BOOKING_DEDUP_SECONDS || 120);
+const recentBookings = new Map(); // key -> expiresAt(ms)
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, t] of recentBookings) if (t <= now) recentBookings.delete(k);
+}, 30000);
+
+/* ---- Booking endpoint (used by form AND voice agent) ---- */
 app.post('/api/book', async (req, res) => {
+  const b = req.body || {};
+  const logTag = `[BOOK ${b?.source || 'web'}]`;
+
   // Minimal, sanitized log so you can trace bookings in Render logs
-  console.log('BOOK req:', {
-    fullName: req.body?.fullName,
-    email: req.body?.email,
-    date: req.body?.date,
-    time: req.body?.time,
-    timeZone: req.body?.timeZone,
-    duration: req.body?.duration,
-    source: req.body?.source
+  console.log(`${logTag} req:`, {
+    fullName: b?.fullName, email: b?.email, date: b?.date, time: b?.time,
+    timeZone: b?.timeZone, duration: b?.duration, source: b?.source
   });
 
   try {
-    const b = req.body || {};
     const fullName = clean(pick(b, ['fullName','full_name','name']));
     const email    = clean(pick(b, ['email','mail']));
     const phone    = clean(pick(b, ['phone','tel','telephone']));
@@ -314,11 +320,20 @@ app.post('/api/book', async (req, res) => {
     const source   = clean(pick(b, ['source'], 'pricing'));
 
     if (!fullName || !email || !date || !time) {
-      console.warn('BOOK 400 missing fields');
+      console.warn(`${logTag} 400 missing fields`);
       return res.status(400).json({ ok:false, error:'Missing required fields: fullName, email, date, time.' });
     }
 
-    // Store UTC times for analytics (if you enable DB)
+    // De-dupe quick repeats
+    const dedupKey = `${email}|${date}|${time}|${timeZone}`;
+    const now = Date.now();
+    if (recentBookings.get(dedupKey) > now) {
+      console.log(`${logTag} deduped`);
+      return res.json({ ok:true, dedup:true });
+    }
+    recentBookings.set(dedupKey, now + DEDUP_SECONDS * 1000);
+
+    // Store UTC times for analytics (if DB enabled)
     const startISO = zonedToUtcISO(date, time, timeZone);
     const endISO   = startISO ? new Date(new Date(startISO).getTime() + duration * 60000).toISOString() : null;
 
@@ -332,7 +347,7 @@ app.post('/api/book', async (req, res) => {
           [fullName, fullName, email, phone, company, notes || null, timeZone,
            startISO, endISO, duration, source, date || null, time || null]
         );
-      } catch (e) { console.warn('BOOK db insert failed:', e?.message); }
+      } catch (e) { console.warn(`${logTag} db insert failed:`, e?.message); }
     }
 
     // Emails
@@ -380,7 +395,7 @@ A calendar invite is attached. If you need to change anything, just reply to thi
           attachments: [{ filename:'invite.ics', content: ics, contentType:'text/calendar; charset=utf-8; method=REQUEST' }]
         });
         emailStatus.user = true;
-      } catch (e) { console.warn('BOOK sendMail(user) failed:', e?.message); }
+      } catch (e) { console.warn(`${logTag} sendMail(user) failed:`, e?.message); }
 
       try {
         await transporter.sendMail({
@@ -405,12 +420,12 @@ ${(notes || '-')}
 `
         });
         emailStatus.sales = true;
-      } catch (e) { console.warn('BOOK sendMail(sales) failed:', e?.message); }
+      } catch (e) { console.warn(`${logTag} sendMail(sales) failed:`, e?.message); }
     } else {
-      console.warn('BOOK: transporter missing, email not sent');
+      console.warn(`${logTag} transporter missing, email not sent`);
     }
 
-    console.log('BOOK ok -> email:', emailStatus);
+    console.log(`${logTag} ok -> email:`, emailStatus);
     res.json({ ok:true, email: emailStatus, debug: { db: !!pool, startISO, endISO } });
   } catch (err) {
     console.error('BOOK 500:', err);
