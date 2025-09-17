@@ -47,7 +47,6 @@ async function getFetch() {
 /* ------------------------------------------------------------------ */
 /* Dynamic runtime config (used by book/index pages)                   */
 /* ------------------------------------------------------------------ */
-// IMPORTANT: declare BEFORE the static middleware so it wins.
 app.get('/config.js', (_req, res) => {
   const cfg = {
     API_BASE: (process.env.API_BASE ?? ''),
@@ -351,7 +350,7 @@ app.post('/api/book', async (req, res) => {
         organizerName: BRAND,
       });
 
-      // Send to guest (updated subject + body)
+      // Send to guest (thank-you body)
       try {
         const whenLabel = prettyWhen(startISO, endISO, timeZone || 'UTC');
         const html = `
@@ -431,7 +430,7 @@ ${(notes || '').trim() || '-'}
 });
 
 /* ------------------------------------------------------------------ */
-/* OpenAI Realtime: mint ephemeral client session                      */
+/* OpenAI Realtime: mint ephemeral client session (with booking proto) */
 /* ------------------------------------------------------------------ */
 app.post('/api/openai/realtime-session', async (req, res) => {
   try {
@@ -439,9 +438,33 @@ app.post('/api/openai/realtime-session', async (req, res) => {
     if (!apiKey) return res.status(500).json({ error: 'Missing OPENAI_API_KEY' });
 
     const voice = req.body?.voice || 'verse';
-    const instructions =
-      req.body?.instructions ||
-      'You are a friendly website guide for Agentlyne. Greet quickly, keep answers under two sentences, and help visitors understand benefits and pricing.';
+
+    const BRAND = process.env.BRAND_NAME || 'Agentlyne';
+    const HOURS = process.env.BUSINESS_HOURS || 'Mon–Fri 9am–5pm';
+    const BIZ_TZ = process.env.BUSINESS_TZ || 'America/New_York';
+    const SLOT_MIN = Number(process.env.SLOT_INTERVAL_MIN || 60);
+    const WINDOW_DAYS = Number(process.env.WINDOW_DAYS || 30);
+
+    const bookingProtocol = `
+You can schedule intro calls for ${BRAND}.
+Collect: full name, email, (optional) phone/company, desired date, time, and the user's time zone (IANA).
+Confirm details. When the user confirms, EMIT EXACTLY ONE LINE:
+
+<<BOOK>>{"fullName":"...","email":"...","phone":"...","company":"...","date":"YYYY-MM-DD","time":"HH:mm","timeZone":"IANA/TZ","duration":${SLOT_MIN}}
+
+Rules:
+- The line must start with "<<BOOK>>" and then one compact JSON object.
+- Use 24h HH:mm time in the user's own time zone.
+- Default duration is ${SLOT_MIN} minutes.
+- Business hours: ${HOURS} (${BIZ_TZ}); suggest within ${WINDOW_DAYS} days.
+Do not add any other text on that line.
+`.trim();
+
+    const baseInstructions =
+      'You are a warm, concise voice agent for the website. Keep replies under two sentences unless clarifying.\n' +
+      bookingProtocol;
+
+    const instructions = (req.body?.instructions ? `${req.body.instructions}\n` : '') + baseInstructions;
 
     const httpFetch = await getFetch();
     const r = await httpFetch('https://api.openai.com/v1/realtime/sessions', {
