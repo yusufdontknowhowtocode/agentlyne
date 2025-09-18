@@ -69,7 +69,13 @@ app.use(express.static(PUBLIC_DIR, {
     if (ext && ext !== '.html') res.setHeader('Cache-Control', 'public, max-age=300');
   }
 }));
+
 app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+
+// Serve old /favicon.ico path by redirecting to our PNG (or SVG)
+app.get('/favicon.ico', (_req, res) => {
+  res.redirect(302, '/favicon-32.png'); // or '/favicon.svg'
+});
 
 // Debug helper for static assets
 app.get('/api/static-check', async (req, res) => {
