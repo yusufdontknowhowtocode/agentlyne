@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <title>Agentlyne — Innovative AI Solutions</title>
+  <meta name="description" content="Agentlyne answers calls, qualifies leads, and can run outbound campaigns automatically." />
+  <meta name="theme-color" content="#0B1220" />
+  <meta name="color-scheme" content="dark light" />
+  <link rel="canonical" href="https://agentlyne.com/" />
+
+  <!-- Open Graph / Twitter (uses an existing asset so SERP and shares show a graphic) -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Agentlyne — Innovative AI Solutions">
+  <meta property="og:description" content="Answer every call. Book more appointments with voice AI.">
+  <meta property="og:url" content="https://agentlyne.com/">
+  <meta property="og:image" content="https://agentlyne.com/apple-touch-icon.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Agentlyne — Innovative AI Solutions">
+  <meta name="twitter:description" content="Answer every call. Book more appointments with voice AI.">
+  <meta name="twitter:image" content="https://agentlyne.com/apple-touch-icon.png">
+
+  <!-- Favicons (prefer colorful SVG; include PNG fallbacks, Apple touch, Safari pinned tab, manifest, and .ico) -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="alternate icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="alternate icon" href="/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5B76FF">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Manrope', 'ui-sans-serif', 'system-ui'],
+            display: ['Space Grotesk', 'Manrope', 'ui-sans-serif', 'system-ui']
+          },
+          colors: { brand: { 500:'#0ea5e9', 600:'#0284c7' } }
+        }
+      }
+    }
+  </script>
+
+  <!-- Booking helper (your existing file) -->
+  <script src="/agent-booking.js"></script>
+
+  <!-- Runtime config + CSS -->
+  <script src="/config.js"></script>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Small tweaks -->
+  <style>
+    :root{ --btn-h:44px; } @media (min-width:640px){ :root{ --btn-h:48px; } }
+    .btn{display:inline-flex;align-items:center;justify-content:center;padding:.625rem 1rem;height:var(--btn-h);min-width:44px;border-radius:9999px;border:1px solid transparent;font-weight:600;line-height:1;white-space:nowrap}
+    .btn-primary{background:linear-gradient(135deg,#06b6d4,#0284c7);color:#fff}
+    .btn-outline{background:transparent;color:#e2e8f0;border-color:rgba(255,255,255,.30)}
+    .btn-outline:hover{background:rgba(255,255,255,.06)}
+    header nav{white-space:nowrap}
+    .retell-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.7);backdrop-filter:blur(6px);z-index:1000}
+    .retell-card{width:min(92vw,420px);height:min(88vh,560px);background:#0b1020;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden}
+    .retell-close{position:absolute;top:8px;right:10px;background:transparent;border:0;color:#fff;font-size:24px;cursor:pointer;z-index:1}
+    body.modal-open{overflow:hidden}
+  </style>
+</head>
+<body class="font-sans">
+  <!-- background orbs + canvas (parallax) -->
+  <canvas id="bgCanvas" aria-hidden="true"></canvas>
+  <div class="glow-orb blue" aria-hidden="true"></div>
+  <div class="glow-orb purple" aria-hidden="true"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30">
+    <div class="wrap px-6">
+      <div class="h-16 mt-4 rounded-full flex items-center justify-between px-4 bg-slate-900/40 backdrop-blur-xl border border-white/10">
+        <a class="flex items-center gap-2" href="index.html">
+          <span class="inline-grid place-items-center h-9 w-9 rounded-full bg-gradient-to-br from-sky-400 to-violet-500">
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M12 3l8 4v6c0 4.418-3.582 8-8 8S4 17.418 4 13V7l8-4z" class="fill-white/95"/></svg>
+          </span>
+          <strong class="text-slate-100">Agentlyne</strong>
+        </a>
+        <nav class="flex items-center gap-2">
+          <a href="pricing.html" class="btn btn-outline">Pricing</a>
+          <a href="book.html" class="btn btn-primary">Book a Call</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero relative">
+    <div class="wrap px-6">
+      <div class="grid lg:grid-cols-12 gap-12 items-start">
+        <div class="lg:col-span-7">
+          <h1 class="font-display text-5xl sm:text-6xl font-bold tracking-[-0.02em] leading-[1.05] bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+            Answer every call.<br/>Book more appointments.
+          </h1>
+        </div>
+        <div class="lg:col-span-5">
+          <p class="text-lg text-slate-300/90 max-w-md mt-2">
+            Our voice AI greets callers, qualifies leads, and schedules on your calendar—so revenue doesn't slip through the cracks.
+          </p>
+          <div class="mt-6 flex gap-3 items-center">
+            <a id="live-demo" href="#" class="btn btn-primary" data-live-demo>Try the Live Demo</a>
+            <a href="pricing.html" class="btn btn-outline">See Pricing</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Avatar Carousel -->
+      <div class="stage" id="stage" aria-label="Agent avatars carousel">
+        <div class="carousel-track">
+          <div class="card prev" data-name="Riley — Support Agent">
+            <img src="bean.png" alt="Riley — Support Agent" loading="eager" />
+            <div class="name-badge" aria-hidden="true">Riley — Support Agent</div>
+          </div>
+
+          <div class="card active" data-name="Julia — Receptionist Agent">
+            <img src="white.png" alt="Julia — Receptionist Agent" />
+            <div class="name-badge" aria-hidden="true">Julia — Receptionist Agent</div>
+          </div>
+
+          <div class="card next" data-name="Hana — Sales Agent">
+            <img src="asian.png" alt="Hana — Sales Agent" />
+            <div class="name-badge" aria-hidden="true">Hana — Sales Agent</div>
+          </div>
+        </div>
+
+        <!-- Bottom-center controls -->
+        <div class="bottom-controls" aria-label="Carousel controls">
+          <button type="button" class="arrow" id="prevBtn" aria-label="Previous slide">‹</button>
+          <div class="nav-dots" role="tablist" aria-label="Slide selector">
+            <button type="button" class="dot" data-go="0" role="tab" aria-label="Go to Riley"></button>
+            <button type="button" class="dot active" data-go="1" role="tab" aria-label="Go to Julia" aria-selected="true"></button>
+            <button type="button" class="dot" data-go="2" role="tab" aria-label="Go to Hana"></button>
+          </div>
+          <button type="button" class="arrow" id="nextBtn" aria-label="Next slide">›</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why teams choose -->
+  <section class="section-dark py-16">
+    <div class="wrap px-6">
+      <div class="problem-wrap">
+        <div class="problems-head mb-6">
+          <h2 class="font-display text-2xl md:text-3xl font-bold text-slate-200 w-full text-center">
+            Why teams choose Agentlyne
+          </h2>
+        </div>
+
+        <div class="problem-grid">
+          <article class="problem-card">
+            <div class="problem-icon">⚡</div>
+            <h3>Leads vanish when calls wait</h3>
+            <p>People reach out when they’re ready. If they hit a queue or voicemail, most never try again. We pick up instantly and keep them engaged.</p>
+            <span class="angle-dots"></span>
+          </article>
+
+          <article class="problem-card card-accent">
+            <div class="problem-icon">📅</div>
+            <h3>Scheduling without the back-and-forth</h3>
+            <p>Your agent checks calendars, offers times, and confirms bookings in seconds—no phone tag, no manual follow-ups.</p>
+            <a href="#workflow" class="btn-learn">
+              See how it works
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M7 17L17 7M17 7H8M17 7v9" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </a>
+            <span class="angle-dots"></span>
+          </article>
+
+          <article class="problem-card">
+            <div class="problem-icon">🛡️</div>
+            <h3>Consistent experience, 24/7</h3>
+            <p>Every caller gets a friendly greeting, proper qualification, and smart routing—at noon, at midnight, and on weekends.</p>
+            <span class="angle-dots"></span>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WORKFLOW -->
+  <section id="workflow" class="section-work py-24">
+    <div class="wrap px-6">
+      <div class="grid lg:grid-cols-2 gap-12 items-center">
+        <div>
+          <h2 class="font-display text-4xl md:text-5xl font-bold tracking-[-0.02em] text-slate-800">
+            From first ring<br class="hidden md:block"> to confirmed booking
+          </h2>
+          <div class="mt-6 text-slate-600">
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Always-on coverage 24/7</div>
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Instant scheduling—no back-and-forth</div>
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Lead capture, qualification & smart routing</div>
+            <div class="flow-bullet"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Automatic reminders & follow-ups</div>
+          </div>
+        </div>
+
+        <div class="flow-wrap">
+          <div class="flow-grid" aria-hidden="true">
+            <div class="flow-card flow-phone">📞 Phone call</div>
+            <div class="flow-card flow-route">🔀 Smart routing</div>
+            <div class="flow-card flow-book">📅 Easy booking</div>
+            <div class="flow-card flow-chat">💬 Chat</div>
+            <div class="flow-card flow-loop">♻️ Engagement loop</div>
+          </div>
+          <div class="flow-lines" aria-hidden="true">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+              <path d="M33 25 C40 25, 42 25, 50 25" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
+              <path d="M66 25 C72 25, 76 25, 82 25" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
+              <path d="M50 35 C50 45, 37 50, 33 58" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
+              <path d="M82 35 C82 45, 66 50, 66 58" fill="none" stroke="url(#g1)" stroke-width="1.6"/>
+              <defs>
+                <linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOLUTIONS -->
+  <section id="solutions" class="section-light py-20">
+    <div class="wrap px-6">
+      <h2 class="font-display text-4xl md:text-5xl font-bold tracking-[-0.02em] text-slate-800 text-center">
+        AI Call Automation—Built for Growth
+      </h2>
+      <div class="solutions-grid mt-10">
+        <article class="plan-card">
+          <div class="plan-head">
+            <div class="dot-matrix" aria-hidden="true"></div>
+            <div>
+              <span class="plan-chip">Proactive</span>
+              <h3 class="plan-title mt-2"><span class="text-brand-600">Outbound</span> campaigns</h3>
+              <p class="plan-sub">Warm leads, re-engage old ones, and follow up automatically.</p>
+            </div>
+          </div>
+          <a href="pricing.html#outbound" class="plan-cta">VIEW PRICING</a>
+          <div class="features">
+            <div class="feat">Sequenced outreach with throttling</div>
+            <div class="feat">Personalized scripts & context memory</div>
+            <div class="feat">CRM write-backs & pipeline sync</div>
+            <div class="feat">Conversion & pickup-rate analytics</div>
+            <div class="feat">A/B prompts & voice variants</div>
+          </div>
+        </article>
+
+        <article class="plan-card">
+          <div class="plan-head">
+            <div class="dot-matrix" aria-hidden="true"></div>
+            <div>
+              <span class="plan-chip">Answer & Book</span>
+              <h3 class="plan-title mt-2"><span class="text-brand-600">Inbound</span> reception</h3>
+              <p class="plan-sub">Pick up every call, resolve questions, and schedule on the spot.</p>
+            </div>
+          </div>
+          <a href="pricing.html#inbound" class="plan-cta">VIEW PRICING</a>
+          <div class="features">
+            <div class="feat">24/7 answering with smart routing</div>
+            <div class="feat">Live calendar offers & confirmations</div>
+            <div class="feat">Knowledge-base/FAQ grounding</div>
+            <div class="feat">Handoff to humans when needed</div>
+            <div class="feat">Sentiment & call summaries</div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-12">
+    <div class="wrap px-6 flex items-center justify-between">
+      <p class="text-sm text-slate-400">© <span id="y"></span> Agentlyne</p>
+      <div class="flex gap-3">
+        <a class="btn btn-outline" href="pricing.html">Pricing</a>
+        <a class="btn btn-primary" href="book.html">Book a Call</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Utility Scripts: year, carousel, background -->
+  <script>
+    // Year
+    const yEl = document.getElementById('y');
+    if (yEl) yEl.textContent = new Date().getFullYear();
+
+    // ----- Carousel -----
+    const cards = Array.from(document.querySelectorAll('.card'));
+    const dots  = Array.from(document.querySelectorAll('.dot'));
+    let currentIndex = 1; // center
+    let isAnimating = false;
+
+    function setParallax(){
+      const unit  = Math.min(window.innerWidth, 1600) * 0.13;
+      const shift = (1 - currentIndex) * unit;
+      document.documentElement.style.setProperty('--bg-shift',  `${shift}px`);
+      document.documentElement.style.setProperty('--orb-shift', `${shift * 0.65}px`);
+      document.documentElement.style.setProperty('--fg-shift',  `${shift * 0.20}px`);
+    }
+    function updateDots(){
+      dots.forEach((d,i)=>{
+        const on = i===currentIndex;
+        d.classList.toggle('active', on);
+        d.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    function layout(index){
+      cards.forEach((card,i)=>{
+        card.classList.remove('active','prev','next','hidden');
+        let diff = i - index; if (diff < 0) diff += cards.length;
+        if (diff===0) card.classList.add('active');
+        else if (diff===1) card.classList.add('next');
+        else if (diff===cards.length-1) card.classList.add('prev');
+        else card.classList.add('hidden');
+      });
+    }
+    function updateCarousel(index){
+      if (isAnimating) return;
+      isAnimating = true;
+      currentIndex = index;
+      layout(currentIndex);
+      updateDots();
+      setParallax();
+      setTimeout(()=>{ isAnimating = false; }, 900);
+    }
+    function nextSlide(){ updateCarousel((currentIndex+1) % cards.length); }
+    function prevSlide(){ updateCarousel((currentIndex-1 + cards.length) % cards.length); }
+
+    document.getElementById('nextBtn')?.addEventListener('click', nextSlide);
+    document.getElementById('prevBtn')?.addEventListener('click', prevSlide);
+    document.addEventListener('keydown', (e)=>{ if (e.key==='ArrowRight') nextSlide(); if (e.key==='ArrowLeft') prevSlide(); });
+    dots.forEach(d=> d.addEventListener('click', ()=> updateCarousel(+d.dataset.go)));
+    cards.forEach((card,idx)=> card.addEventListener('click', ()=>{ if(!card.classList.contains('active')) updateCarousel(idx); }));
+    layout(currentIndex); updateDots(); setParallax(); window.addEventListener('resize', setParallax);
+
+    // Subtle background (stars)
+    (function(){
+      const c = document.getElementById('bgCanvas');
+      if (!c) return;
+      const ctx = c.getContext('2d', {alpha:true});
+      let dpr = Math.max(1, window.devicePixelRatio||1);
+      let W, H; const particles = [];
+      function resize(){
+        W = c.width  = Math.floor(innerWidth * dpr);
+        H = c.height = Math.floor(innerHeight * dpr);
+        c.style.width  = innerWidth + 'px';
+        c.style.height = innerHeight + 'px';
+      }
+      resize(); addEventListener('resize', resize);
+      for (let i=0;i<50;i++){
+        particles.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.2,vy:(Math.random()-.5)*.2,r:Math.random()*2+1,o:Math.random()*.5+.1});
+      }
+      (function loop(){
+        ctx.clearRect(0,0,W,H);
+        particles.forEach(p=>{
+          p.x+=p.vx; p.y+=p.vy;
+          if(p.x<0)p.x=W; if(p.x>W)p.x=0;
+          if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+          ctx.beginPath(); ctx.arc(p.x,p.y,p.r*dpr,0,Math.PI*2);
+          ctx.fillStyle = `rgba(142,202,230,${p.o})`;
+          ctx.fill();
+        });
+        requestAnimationFrame(loop);
+      })();
+    })();
+  </script>
+
+  <!-- Voice Demo Modal (OpenAI Realtime) -->
+  <div id="voice-modal" class="retell-modal" role="dialog" aria-modal="true" aria-label="Live demo">
+    <div class="retell-card">
+      <button id="voice-close" class="retell-close" aria-label="Close">×</button>
+      <div style="padding:20px;color:#e2e8f0">
+        <h3 style="font-weight:700;margin-bottom:6px">Live Voice Demo</h3>
+        <p style="opacity:.85">Your microphone is active. Say “Hi!”</p>
+        <p style="opacity:.7;font-size:12px;margin-top:12px">Tip: talk over the assistant to interrupt.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- OpenAI Realtime client -->
+  <script src="/sdk/openai-realtime.v1.js?v=2"></script>
+  <script>
+    const voiceModal = document.getElementById('voice-modal');
+    const voiceClose = document.getElementById('voice-close');
+    const demoBtn    = document.getElementById('live-demo');
+    const LOCKED_VOICE = 'coral'; // single feminine voice
+
+    function showModal() {
+      voiceModal.style.display = 'flex';
+      document.body.classList.add('modal-open');
+    }
+    function hideModal() {
+      try { OpenAIRealtime.stop(); } catch {}
+      voiceModal.style.display = 'none';
+      document.body.classList.remove('modal-open');
+    }
+    voiceClose?.addEventListener('click', hideModal);
+
+    async function startVoiceDemo() {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        showModal();
+
+        await OpenAIRealtime.start({
+          voice: LOCKED_VOICE,
+          instructions: [
+            "You are an Agentlyne receptionist with a calm, friendly, *human* tone.",
+            "Natural feminine delivery, relaxed pace, small smile in the voice.",
+            "Keep replies short (1–2 sentences), use contractions, vary rhythm.",
+            "Avoid robotic phrasing or meta talk; sound like a person helping."
+          ].join(' ')
+        });
+      } catch (err) {
+        console.error('[voice-demo]', err);
+        alert('Could not start the live demo:\n' + (err.message || err));
+        hideModal();
+      }
+    }
+
+    demoBtn?.addEventListener('click', (e) => { e.preventDefault(); startVoiceDemo(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideModal(); });
+  </script>
+</body>
+</html>

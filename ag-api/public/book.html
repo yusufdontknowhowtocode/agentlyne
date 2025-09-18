@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <title>Book — Agentlyne</title>
+  <meta name="description" content="Book a call with Agentlyne to map your voice AI reception or outbound workflow." />
+  <meta name="theme-color" content="#0B1220" />
+  <meta name="color-scheme" content="dark light" />
+  <link rel="canonical" href="https://agentlyne.com/book.html" />
+
+  <!-- Favicons (colorful SVG first, PNG fallbacks, Apple touch, Safari pinned tab) -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="alternate icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="alternate icon" href="/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5B76FF">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+
+  <!-- Fonts / Tailwind -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Runtime config + styles -->
+  <script src="/config.js"></script>
+  <link rel="stylesheet" href="style.css" />
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    :root{ --brand-500:#00e0d8; --brand-600:#00b8a9; }
+    body{ background:#f7f8ff; font-family: Manrope, ui-sans-serif, system-ui; color:#0f172a; }
+
+    .panel{
+      background:#fff; border:1px solid rgba(2,8,23,.08); border-radius:20px;
+      box-shadow:0 12px 32px rgba(2,8,23,.06);
+    }
+    .ring-brand{ box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--brand-500) 35%, transparent) }
+    .btn{ display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:9999px;padding:.75rem 1.25rem;font-weight:700;transition:transform .15s, box-shadow .15s }
+    .btn-primary{ color:#fff;background:linear-gradient(135deg,var(--brand-500),var(--brand-600));box-shadow:0 10px 28px color-mix(in oklab, var(--brand-600) 28%, transparent) }
+    .btn-primary:hover{ transform:translateY(-2px); box-shadow:0 14px 34px color-mix(in oklab, var(--brand-600) 34%, transparent) }
+    .btn-ghost{ border:2px solid rgba(2,8,23,.12); background:#fff; color:#0f172a }
+    .chip{ display:inline-flex; align-items:center; gap:.5rem; padding:.35rem .7rem; border-radius:9999px; background:#fff; border:1px solid rgba(2,8,23,.12); color:#0f172a; font-weight:800 }
+
+    .layout{ display:grid; gap:1.5rem; grid-template-columns:minmax(0,1fr); align-items:start; }
+    @media (min-width:1024px){
+      .layout{ grid-template-columns:minmax(0,1fr) 420px; gap:2rem; }
+      .sticky-aside{ position:sticky; top:6rem; }
+    }
+
+    /* Force light inputs (and native pickers) on this page */
+    .book-page .panel, .book-page form{ color-scheme: light; }
+    .book-page input,.book-page textarea,.book-page select{
+      background:#fff !important; color:#0f172a !important; border:1px solid rgba(2,8,23,.12) !important;
+      outline:none; -webkit-appearance:none; appearance:none;
+    }
+    .book-page input::placeholder,.book-page textarea::placeholder{ color:#94a3b8; }
+    .book-page select{ background-image:none; }
+
+    /* Neutralize any global `.card` positioning here */
+    .book-page .card{ position:static !important; transform:none !important; }
+  </style>
+</head>
+
+<body class="text-slate-900 book-page">
+  <div class="max-w-6xl mx-auto px-6 py-10">
+    <header class="mb-8">
+      <a href="pricing.html" class="text-slate-500 hover:text-slate-700">&larr; Back to Pricing</a>
+      <h1 id="pageTitle" class="mt-2 text-4xl font-extrabold tracking-tight" style="font-family: Space Grotesk, Manrope, ui-sans-serif">Talk to sales</h1>
+      <p id="pageSub" class="mt-2 text-slate-500">Tell us a bit about your business and pick a time.</p>
+      <p class="mt-3">
+        <span class="chip">Plan: <span id="chipPlan" class="font-extrabold">Inbound</span></span>
+        <span class="chip">Tier: <span id="chipTier" class="font-extrabold">Starter</span></span>
+      </p>
+    </header>
+
+    <div class="layout">
+      <!-- LEFT: Form -->
+      <form id="bookForm" class="panel p-5 min-w-0" novalidate>
+        <h2 class="text-xl font-extrabold">Book a call</h2>
+        <div id="banner" class="hidden mb-4 rounded-xl border p-3 text-sm" aria-live="polite"></div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label class="block">
+            <span class="text-sm font-semibold">Full name</span>
+            <input name="fullName" autocomplete="name" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold">Email</span>
+            <input name="email" type="email" autocomplete="email" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold">Phone</span>
+            <input name="phone" inputmode="tel" autocomplete="tel" class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold">Company</span>
+            <input name="company" autocomplete="organization" class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+          </label>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+          <label class="block">
+            <span class="text-sm font-semibold">Date</span>
+            <input name="date" id="dateInput" type="date" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold">Time</span>
+            <select name="time" id="timeSel" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none">
+              <option value="" disabled selected>Select time</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold">Time zone</span>
+            <select name="timeZone" id="tz" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none"></select>
+          </label>
+        </div>
+
+        <div class="mt-4">
+          <label class="block">
+            <span class="text-sm font-semibold">Notes</span>
+            <textarea name="notes" rows="4" class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none" placeholder="Anything helpful (goals, tools, volume, etc.)"></textarea>
+          </label>
+        </div>
+
+        <!-- Hidden context -->
+        <input type="hidden" name="plan"   id="fPlan" />
+        <input type="hidden" name="tier"   id="fTier" />
+        <input type="hidden" name="intent" id="fIntent" />
+        <input type="hidden" name="source" value="pricing" />
+
+        <div class="mt-6 flex flex-wrap gap-3">
+          <button class="btn btn-primary" id="bookBtn" type="submit">Book this time</button>
+          <button class="btn btn-ghost" type="button" id="testSlot">Suggest times</button>
+        </div>
+      </form>
+
+      <!-- RIGHT: Info -->
+      <aside class="panel p-5 sticky-aside min-w-0">
+        <h3 class="text-lg font-bold">What happens next?</h3>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li>• You’ll get a calendar invite by email (.ics attached).</li>
+          <li>• We’ll join via Zoom or Google Meet.</li>
+          <li>• Bring your flow and pain points—we’ll map quick wins.</li>
+        </ul>
+        <div class="mt-6 p-4 rounded-xl bg-slate-50 border border-slate-200">
+          <strong class="block">Need a specific slot?</strong>
+          <span class="text-slate-500">Use “Suggest times” and we’ll propose open slots automatically.</span>
+          <div id="slotList" class="mt-3 grid gap-2"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    const APP      = window.APP_CONFIG || {};
+    const API_BASE = (APP.API_BASE ?? '').trim() || '';
+    const SUPPORT  = APP.SUPPORT_EMAIL || 'info@agentlyne.com';
+    const BRAND    = APP.BRAND_NAME || 'Agentlyne';
+
+    // Working hours (24h) – hourly slots
+    const WORK_HOURS = { start: 9, end: 17 };
+
+    const qs = new URLSearchParams(location.search);
+    const PLAN   = (qs.get('plan')  || 'inbound').toLowerCase();
+    const TIER   = (qs.get('tier')  || 'starter').toLowerCase();
+    const INTENT = (qs.get('intent')|| `${PLAN}-${TIER}`);
+
+    const api    = p => `${API_BASE}${p}`;
+    const banner = document.getElementById('banner');
+    const form   = document.getElementById('bookForm');
+    const btn    = document.getElementById('bookBtn');
+    const timeSel= document.getElementById('timeSel');
+    const dateInput = document.getElementById('dateInput');
+
+    function setBanner(kind, text) {
+      if (!banner) return;
+      banner.className = "mb-4 rounded-xl border p-3 text-sm";
+      if (kind === 'ok')      banner.classList.add('bg-emerald-50','border-emerald-200','text-emerald-700');
+      else if (kind === 'warn') banner.classList.add('bg-amber-50','border-amber-200','text-amber-700');
+      else                      banner.classList.add('bg-rose-50','border-rose-200','text-rose-700');
+      banner.textContent = text;
+      banner.classList.remove('hidden');
+    }
+    function clearBanner(){ if(banner){ banner.className='hidden'; banner.textContent=''; } }
+
+    function pad2(n){ return String(n).padStart(2,'0'); }
+    function toHourLabel(h){
+      const isPM = h >= 12;
+      const h12 = ((h + 11) % 12) + 1;
+      return `${h12} ${isPM ? 'PM' : 'AM'}`;
+    }
+    function buildTimeOptions(){
+      if(!timeSel) return;
+      timeSel.innerHTML = '<option value="" disabled selected>Select time</option>';
+      for(let h = WORK_HOURS.start; h <= WORK_HOURS.end; h++){
+        const opt = document.createElement('option');
+        opt.value = `${pad2(h)}:00`;
+        opt.textContent = toHourLabel(h);
+        timeSel.appendChild(opt);
+      }
+    }
+    function setMinDateToday(){
+      if(!dateInput) return;
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = pad2(now.getMonth()+1);
+      const d = pad2(now.getDate());
+      dateInput.min = `${y}-${m}-${d}`; // disables past days
+    }
+
+    (function init(){
+      document.title = `Book — ${BRAND}`;
+      const cap = s => s ? s[0].toUpperCase()+s.slice(1) : s;
+      document.getElementById('chipPlan').textContent = cap(PLAN);
+      document.getElementById('chipTier').textContent = cap(TIER);
+      document.getElementById('fPlan').value   = PLAN;
+      document.getElementById('fTier').value   = TIER;
+      document.getElementById('fIntent').value = INTENT;
+
+      // Notes starter
+      const notes = form?.querySelector('textarea[name="notes"]');
+      if (notes && !notes.value.trim()) {
+        const pretty = INTENT.replace(/[-_]+/g,' ').replace(/\b\w/g,s=>s.toUpperCase());
+        notes.value = `Requested: ${pretty}\n\nKey details:\n• Team size / call volume\n• CRMs / tools\n• Hours of coverage\n• Any compliance needs`;
+      }
+
+      // Timezone select
+      const tzSelect = document.getElementById('tz');
+      if (tzSelect) {
+        const current = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        const zones = (Intl.supportedValuesOf && Intl.supportedValuesOf('timeZone')) || [current,'UTC'];
+        [current, ...zones.filter(z=>z!==current)].forEach(z=>{
+          const o=document.createElement('option'); o.value=o.textContent=z; tzSelect.appendChild(o);
+        });
+      }
+
+      buildTimeOptions();
+      setMinDateToday();
+
+      try{
+        localStorage.setItem('agentlyne_plan', PLAN);
+        localStorage.setItem('agentlyne_tier', TIER);
+        localStorage.setItem('agentlyne_intent', INTENT);
+      }catch{}
+    })();
+
+    form?.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      clearBanner();
+
+      if (dateInput && dateInput.value && dateInput.min && dateInput.value < dateInput.min){
+        setBanner('err', 'Please choose a date that is today or later.');
+        return;
+      }
+
+      const fd = new FormData(form);
+      const payload = Object.fromEntries(fd.entries());
+      payload.plan     = PLAN;
+      payload.tier     = TIER;
+      payload.intent   = INTENT;
+      payload.source   = 'pricing';
+      payload.duration = 60; // hourly
+
+      btn.disabled = true; btn.textContent = 'Booking…';
+
+      try {
+        const r = await fetch(api('/api/book'), {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        let data = null; try { data = await r.json(); } catch {}
+        if (!r.ok || !(data && data.ok === true)) {
+          throw new Error((data && data.error) || `Request failed (${r.status})`);
+        }
+
+        setBanner('ok', 'Booked! Check your email for the confirmation.');
+        form.reset();
+        document.getElementById('fPlan').value   = PLAN;
+        document.getElementById('fTier').value   = TIER;
+        document.getElementById('fIntent').value = INTENT;
+        setMinDateToday();
+        buildTimeOptions();
+      } catch (err) {
+        console.error('book error:', err);
+        setBanner('err', `Something went wrong. Please try again${SUPPORT ? ` or email ${SUPPORT}.` : '.'}`);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Book this time';
+      }
+    });
+
+    document.getElementById('testSlot')?.addEventListener('click', async ()=>{
+      const tzSel = document.getElementById('tz');
+      const tz = tzSel ? tzSel.value : 'UTC';
+      const today = new Date().toISOString().slice(0,10);
+      const wrap = document.getElementById('slotList');
+      if (!wrap) return;
+      wrap.innerHTML = '';
+      try{
+        const r = await fetch(api(`/api/slots?date=${today}&tz=${encodeURIComponent(tz)}`));
+        const { slots = [] } = await r.json();
+        if (!slots.length){
+          const p = document.createElement('p'); p.className='text-xs text-slate-500';
+          p.textContent='No suggestions for today. Try another date.'; wrap.appendChild(p); return;
+        }
+        slots.forEach(iso=>{
+          const d = new Date(iso);
+          const b = document.createElement('button');
+          b.className='px-3 py-2 rounded-lg border hover:bg-slate-100 text-sm';
+          b.type='button';
+          b.textContent=d.toLocaleTimeString([], {hour:'numeric'});
+          b.onclick=()=>{
+            const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), da = String(d.getDate()).padStart(2,'0');
+            dateInput.value = `${y}-${m}-${da}`;
+            const hhmm = `${String(d.getHours()).padStart(2,'0')}:00`;
+            timeSel.value = hhmm;
+            if (tzSel) tzSel.value = tz;
+            wrap.innerHTML = '';
+          };
+          wrap.appendChild(b);
+        });
+      }catch(e){ console.error('/api/slots error', e); }
+    });
+  </script>
+</body>
+</html>
