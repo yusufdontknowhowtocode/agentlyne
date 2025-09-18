@@ -10,7 +10,7 @@
   <meta name="color-scheme" content="dark light" />
   <link rel="canonical" href="https://agentlyne.com/" />
 
-  <!-- Open Graph / Twitter (uses an existing asset so SERP and shares show a graphic) -->
+  <!-- Open Graph / Twitter -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="Agentlyne — Innovative AI Solutions">
   <meta property="og:description" content="Answer every call. Book more appointments with voice AI.">
@@ -21,13 +21,35 @@
   <meta name="twitter:description" content="Answer every call. Book more appointments with voice AI.">
   <meta name="twitter:image" content="https://agentlyne.com/apple-touch-icon.png">
 
-  <!-- Favicons (prefer colorful SVG; include PNG fallbacks, Apple touch, Safari pinned tab, manifest, and .ico) -->
-  <!-- Favicons (SVG preferred) -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=8">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=8">
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=8">
+  <!-- Favicons -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="icon" href="/favicon.ico" sizes="any">
 
-
+  <!-- Structured data (helps Google pick up favicon & sitename) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "Agentlyne",
+    "alternateName": "Agentlyne",
+    "url": "https://agentlyne.com/"
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "Agentlyne",
+    "url": "https://agentlyne.com/",
+    "logo": "https://agentlyne.com/apple-touch-icon.png",
+    "sameAs": []
+  }
+  </script>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -50,7 +72,7 @@
     }
   </script>
 
-  <!-- Booking helper (your existing file) -->
+  <!-- Booking helper -->
   <script src="/agent-booking.js"></script>
 
   <!-- Runtime config + CSS -->
@@ -396,7 +418,7 @@
     const voiceModal = document.getElementById('voice-modal');
     const voiceClose = document.getElementById('voice-close');
     const demoBtn    = document.getElementById('live-demo');
-    const LOCKED_VOICE = 'coral'; // single feminine voice
+    const LOCKED_VOICE = 'coral';
 
     function showModal() {
       voiceModal.style.display = 'flex';
@@ -413,12 +435,10 @@
       try {
         await navigator.mediaDevices.getUserMedia({ audio: true });
         showModal();
-
         await OpenAIRealtime.start({
           voice: LOCKED_VOICE,
           instructions: [
-            "You are an Agentlyne receptionist with a calm, friendly, *human* tone.",
-            "Natural feminine delivery, relaxed pace, small smile in the voice.",
+            "You are an Agentlyne receptionist with a calm, friendly, human tone.",
             "Keep replies short (1–2 sentences), use contractions, vary rhythm.",
             "Avoid robotic phrasing or meta talk; sound like a person helping."
           ].join(' ')
