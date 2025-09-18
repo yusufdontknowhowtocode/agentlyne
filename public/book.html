@@ -3,28 +3,29 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <title>Book — Agentlyne</title>
   <meta name="description" content="Book a call with Agentlyne to map your voice AI reception or outbound workflow." />
-  <meta name="theme-color" content="#00b8a9" />
+  <meta name="theme-color" content="#0B1220" />
   <meta name="color-scheme" content="dark light" />
   <link rel="canonical" href="https://agentlyne.com/book.html" />
 
-  <link rel="icon" href="/favicon.ico" sizes="any">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <!-- Favicons (colorful SVG first, PNG fallbacks, Apple touch, Safari pinned tab) -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="alternate icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="alternate icon" href="/favicon-16.png" sizes="16x16" type="image/png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5B76FF">
   <link rel="manifest" href="/site.webmanifest">
+  <link rel="icon" href="/favicon.ico" sizes="any">
 
-  <!-- Inline SVG fallback -->
-  <link rel="icon" sizes="any"
-        href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="%2359d0ff"/><stop offset="1" stop-color="%238a5cff"/></linearGradient></defs><rect rx="14" width="64" height="64" fill="%230b1020"/><path d="M32 10l18 10v14c0 10-8 20-18 20S14 44 14 34V20z" fill="url(%23g)"/></svg>'>
-
+  <!-- Fonts / Tailwind -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-
   <script src="https://cdn.tailwindcss.com"></script>
 
+  <!-- Runtime config + styles -->
   <script src="/config.js"></script>
   <link rel="stylesheet" href="style.css" />
 
@@ -108,7 +109,6 @@
           </label>
           <label class="block">
             <span class="text-sm font-semibold">Time</span>
-            <!-- HOURLY SELECT -->
             <select name="time" id="timeSel" required class="mt-1 w-full rounded-xl ring-brand px-3 py-2 outline-none">
               <option value="" disabled selected>Select time</option>
             </select>
@@ -161,8 +161,8 @@
     const SUPPORT  = APP.SUPPORT_EMAIL || 'info@agentlyne.com';
     const BRAND    = APP.BRAND_NAME || 'Agentlyne';
 
-    // ✅ Config: change these for your working hours (24h)
-    const WORK_HOURS = { start: 9, end: 17 }; // 9:00 -> 17:00 inclusive (1-hr steps)
+    // Working hours (24h) – hourly slots
+    const WORK_HOURS = { start: 9, end: 17 };
 
     const qs = new URLSearchParams(location.search);
     const PLAN   = (qs.get('plan')  || 'inbound').toLowerCase();
@@ -198,7 +198,7 @@
       timeSel.innerHTML = '<option value="" disabled selected>Select time</option>';
       for(let h = WORK_HOURS.start; h <= WORK_HOURS.end; h++){
         const opt = document.createElement('option');
-        opt.value = `${pad2(h)}:00`;   // submit as "HH:00"
+        opt.value = `${pad2(h)}:00`;
         opt.textContent = toHourLabel(h);
         timeSel.appendChild(opt);
       }
@@ -206,11 +206,10 @@
     function setMinDateToday(){
       if(!dateInput) return;
       const now = new Date();
-      // local date in YYYY-MM-DD (no tz shift)
       const y = now.getFullYear();
       const m = pad2(now.getMonth()+1);
       const d = pad2(now.getDate());
-      dateInput.min = `${y}-${m}-${d}`; // ⬅ disables/grays out past days
+      dateInput.min = `${y}-${m}-${d}`; // disables past days
     }
 
     (function init(){
@@ -239,7 +238,6 @@
         });
       }
 
-      // Build hourly times + min date
       buildTimeOptions();
       setMinDateToday();
 
@@ -254,7 +252,6 @@
       e.preventDefault();
       clearBanner();
 
-      // Prevent past date submission (extra guard)
       if (dateInput && dateInput.value && dateInput.min && dateInput.value < dateInput.min){
         setBanner('err', 'Please choose a date that is today or later.');
         return;
@@ -266,7 +263,7 @@
       payload.tier     = TIER;
       payload.intent   = INTENT;
       payload.source   = 'pricing';
-      payload.duration = 60; // since slots are hourly now
+      payload.duration = 60; // hourly
 
       btn.disabled = true; btn.textContent = 'Booking…';
 
@@ -286,8 +283,8 @@
         document.getElementById('fPlan').value   = PLAN;
         document.getElementById('fTier').value   = TIER;
         document.getElementById('fIntent').value = INTENT;
-        setMinDateToday();       // keep past days disabled after reset
-        buildTimeOptions();      // rebuild to restore placeholder
+        setMinDateToday();
+        buildTimeOptions();
       } catch (err) {
         console.error('book error:', err);
         setBanner('err', `Something went wrong. Please try again${SUPPORT ? ` or email ${SUPPORT}.` : '.'}`);
@@ -296,7 +293,6 @@
       }
     });
 
-    // Suggest times -> fill date + nearest hour in the select
     document.getElementById('testSlot')?.addEventListener('click', async ()=>{
       const tzSel = document.getElementById('tz');
       const tz = tzSel ? tzSel.value : 'UTC';
@@ -318,10 +314,8 @@
           b.type='button';
           b.textContent=d.toLocaleTimeString([], {hour:'numeric'});
           b.onclick=()=>{
-            // set date
             const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), da = String(d.getDate()).padStart(2,'0');
             dateInput.value = `${y}-${m}-${da}`;
-            // set time to top of the hour in select
             const hhmm = `${String(d.getHours()).padStart(2,'0')}:00`;
             timeSel.value = hhmm;
             if (tzSel) tzSel.value = tz;
