@@ -193,6 +193,10 @@ const FROM_ADDR = process.env.SMTP_FROM || process.env.FROM_EMAIL || 'no-reply@a
 const FROM_EMAIL = `${BRAND} <${FROM_ADDR}>`;
 const SALES_EMAIL = process.env.BOOKINGS_INBOX || process.env.SALES_EMAIL || `sales@agentlyne.com`;
 
+// NEW: archive & tagging knobs (Step-1 Option A)
+const ARCHIVE_BCC = (process.env.BCC_ARCHIVE || 'chalfontwebs@gmail.com').trim();
+const MAILGUN_TAG = (process.env.MAILGUN_TAG || 'booking').trim();
+
 const transporter = process.env.SMTP_HOST ? nodemailer.createTransport({
   host: process.env.SMTP_HOST,        // Mailgun: smtp.mailgun.org
   port: smtpPort,                     // 587
@@ -397,7 +401,11 @@ A calendar invite is attached. If you need to change anything, just reply to thi
 
 — Team ${BRAND}`,
           html,
-          attachments: [{ filename:'invite.ics', content: ics, contentType:'text/calendar; charset=utf-8; method=REQUEST' }]
+          attachments: [{ filename:'invite.ics', content: ics, contentType:'text/calendar; charset=utf-8; method=REQUEST' }],
+
+          // Step-1 Option A: archive + tag
+          bcc: ARCHIVE_BCC || undefined,
+          headers: { 'X-Mailgun-Tag': MAILGUN_TAG }
         });
         emailStatus.user = true;
       } catch (e) { console.warn(`${logTag} sendMail(user) failed:`, e?.message); }
@@ -422,7 +430,11 @@ Length:  ${duration} minutes
 
 Notes:
 ${(notes || '-')}
-`
+`,
+
+          // Step-1 Option A: archive + tag
+          bcc: ARCHIVE_BCC || undefined,
+          headers: { 'X-Mailgun-Tag': MAILGUN_TAG }
         });
         emailStatus.sales = true;
       } catch (e) { console.warn(`${logTag} sendMail(sales) failed:`, e?.message); }
