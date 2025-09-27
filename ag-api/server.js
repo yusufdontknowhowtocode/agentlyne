@@ -449,6 +449,37 @@ ${(notes || '-')}
     res.status(500).json({ ok:false, error:'Server error' });
   }
 });
+// --- Manual reply endpoint (secure with a token) ---
+app.post('/api/manual-email', async (req, res) => {
+  try {
+    const token = req.headers['x-admin-token'] || req.query.token;
+    if (process.env.ADMIN_TOKEN && token !== process.env.ADMIN_TOKEN) {
+      return res.status(401).json({ ok:false, error:'unauthorized' });
+    }
+    if (!transporter) return res.status(500).json({ ok:false, error:'smtp_disabled' });
+
+    const { to, subject, html, text } = req.body || {};
+    if (!to || !subject || (!html && !text)) {
+      return res.status(400).json({ ok:false, error:'to, subject, and html or text are required' });
+    }
+
+    const info = await transporter.sendMail({
+      from: FROM_EMAIL,                    // Agentlyne <info@agentlyne.com>
+      to,
+      subject,
+      html,
+      text,
+      replyTo: process.env.SUPPORT_EMAIL || FROM_ADDR,
+      bcc: (process.env.BCC_ARCHIVE || '').trim() || undefined,
+      headers: { 'X-Mailgun-Tag': (process.env.MAILGUN_TAG || 'manual-reply') }
+    });
+
+    res.json({ ok:true, id: info.messageId });
+  } catch (e) {
+    console.error('manual-email error:', e);
+    res.status(500).json({ ok:false, error:'send_failed' });
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /* OpenAI Realtime: mint ephemeral client session (with booking proto) */
