@@ -1,3 +1,4 @@
+// server.js
 // Loads .env locally (on Render, env vars are injected)
 import 'dotenv/config';
 
@@ -17,12 +18,12 @@ try { dns.setDefaultResultOrder('ipv4first'); } catch {}
 
 const app = express();
 app.disable('x-powered-by');
+app.enable('trust proxy');
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Force HTTPS behind a proxy (Render/Cloudflare/etc.)
-app.enable('trust proxy');
 app.use((req, res, next) => {
   if (req.secure || req.headers['x-forwarded-proto'] === 'https') return next();
   return res.redirect(301, 'https://' + req.headers.host + req.originalUrl);
@@ -32,20 +33,45 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 /* ------------------------------------------------------------------ */
-/* fetch fallback (lazy, no top-level await)                           */
+/* Static site                                                         */
 /* ------------------------------------------------------------------ */
-let cachedNodeFetch = null;
-async function getFetch() {
-  if (globalThis.fetch) return globalThis.fetch;
-  if (!cachedNodeFetch) {
-    const mod = await import('node-fetch');
-    cachedNodeFetch = mod.default || mod;
+app.use(express.static(PUBLIC_DIR, {
+  extensions: ['html'],
+  setHeaders: (res, filePath) => {
+    const ext = path.extname(filePath).toLowerCase();
+    // Cache-bust HTML, lightly cache other assets
+    if (ext === '.html') res.setHeader('Cache-Control', 'no-store');
+    else res.setHeader('Cache-Control', 'public, max-age=300');
   }
-  return cachedNodeFetch;
-}
+}));
+
+// Root document
+app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+
+// Favicon convenience redirect
+app.get('/favicon.ico', (_req, res) => res.redirect(301, '/favicon-48.png'));
 
 /* ------------------------------------------------------------------ */
-/* Dynamic runtime config (used by book/index pages)                   */
+/* Google HTML-file verification helper                                */
+/* ------------------------------------------------------------------ */
+// If the real file exists in /public, serve it. Otherwise synthesize one
+// from env GOOGLE_SITE_VERIFICATION (just the token, no prefix).
+app.get(/^\/google([A-Za-z0-9_-]{5,})\.html$/, async (req, res) => {
+  try {
+    const rel = req.path.replace(/^\//, '');
+    const abs = path.join(PUBLIC_DIR, rel);
+    // Serve the actual file if present
+    await fs.access(abs);
+    return res.sendFile(abs);
+  } catch {}
+  const token = (process.env.GOOGLE_SITE_VERIFICATION || '').trim();
+  if (!token) return res.status(404).type('text/plain').send('Not found');
+  res.type('text/plain').set('Cache-Control', 'no-store')
+     .send(`google-site-verification: ${token}`);
+});
+
+/* ------------------------------------------------------------------ */
+/* Dynamic runtime config                                              */
 /* ------------------------------------------------------------------ */
 app.get('/config.js', (_req, res) => {
   const cfg = {
@@ -60,36 +86,7 @@ app.get('/config.js', (_req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Static site                                                         */
-/* ------------------------------------------------------------------ */
-app.use(express.static(PUBLIC_DIR, {
-  extensions: ['html'],
-  setHeaders: (res, filePath) => {
-    const ext = path.extname(filePath).toLowerCase();
-    if (ext && ext !== '.html') res.setHeader('Cache-Control', 'public, max-age=300');
-  }
-}));
-
-app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
-
-// Serve old /favicon.ico path by redirecting to our PNG (or SVG)
-app.get('/favicon.ico', (_req, res) => res.redirect(301, '/favicon-48.png'));
-
-
-// Debug helper for static assets
-app.get('/api/static-check', async (req, res) => {
-  try {
-    const p = String(req.query.path || '');
-    const safe = path.normalize(p).replace(/^(\.\.[/\\])+/, '');
-    const abs = path.join(PUBLIC_DIR, safe);
-    if (!abs.startsWith(PUBLIC_DIR)) return res.status(400).json({ ok:false, error:'bad path' });
-    let exists = false; try { await fs.access(abs); exists = true; } catch {}
-    res.json({ ok:true, exists, rel:safe, abs });
-  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
-});
-
-/* ------------------------------------------------------------------ */
-/* Utils                                                              */
+/* Utils                                                               */
 /* ------------------------------------------------------------------ */
 const clean = (s) => String(s ?? '').replace(/[\r\n]+/g, ' ').trim();
 function pick(obj, keys, def = '') { for (const k of keys) { if (obj && obj[k] != null && String(obj[k]).trim() !== '') return String(obj[k]); } return def; }
@@ -138,8 +135,6 @@ function prettyWhen(startISO, endISO, tz) {
 /* ------------------------------------------------------------------ */
 /* DB (optional) + SMTP bootstrap                                     */
 /* ------------------------------------------------------------------ */
-
-// ---- DB (optional)
 const USE_DB = !!process.env.DATABASE_URL;
 let pool = null;
 
@@ -166,7 +161,7 @@ async function initDbPool() {
   }
 }
 async function ensureSchema() {
-  if (!pool) return; // skip if DB disabled
+  if (!pool) return;
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS bookings (
@@ -183,7 +178,9 @@ async function ensureSchema() {
   }
 }
 
-// ---- SMTP
+/* ------------------------------------------------------------------ */
+/* SMTP setup                                                         */
+/* ------------------------------------------------------------------ */
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecureEnv = String(process.env.SMTP_SECURE || '').toLowerCase();
 const smtpSecure = smtpSecureEnv ? ['1','true','yes','on'].includes(smtpSecureEnv) : smtpPort === 465;
@@ -192,15 +189,13 @@ const BRAND = process.env.BRAND_NAME || 'Agentlyne';
 const FROM_ADDR = process.env.SMTP_FROM || process.env.FROM_EMAIL || 'no-reply@agentlyne.com';
 const FROM_EMAIL = `${BRAND} <${FROM_ADDR}>`;
 const SALES_EMAIL = process.env.BOOKINGS_INBOX || process.env.SALES_EMAIL || `sales@agentlyne.com`;
-
-// NEW: archive & tagging knobs (Step-1 Option A)
 const ARCHIVE_BCC = (process.env.BCC_ARCHIVE || 'chalfontwebs@gmail.com').trim();
 const MAILGUN_TAG = (process.env.MAILGUN_TAG || 'booking').trim();
 
 const transporter = process.env.SMTP_HOST ? nodemailer.createTransport({
-  host: process.env.SMTP_HOST,        // Mailgun: smtp.mailgun.org
-  port: smtpPort,                     // 587
-  secure: smtpSecure,                 // false for 587, true for 465
+  host: process.env.SMTP_HOST,
+  port: smtpPort,
+  secure: smtpSecure,
   auth: (process.env.SMTP_USER || process.env.SMTP_PASS) ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
   tls: { minVersion: 'TLSv1.2' },
   pool: true,
@@ -216,7 +211,9 @@ if (transporter) {
   console.warn('SMTP: disabled (missing SMTP_HOST)');
 }
 
-/* ---- ICS builder (TZID, no UTC headaches) ---- */
+/* ------------------------------------------------------------------ */
+/* ICS builder                                                        */
+/* ------------------------------------------------------------------ */
 function icsInvite({ title, description, startLocal, endLocal, tzid, organizerEmail, organizerName='Agentlyne' }) {
   const uid = crypto.randomUUID();
   const stamp = new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
@@ -286,7 +283,6 @@ app.get('/api/email-test', async (req, res) => {
   } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
 });
 
-/* ---- Slot suggestions (fallback UI) ---- */
 app.get('/api/slots', (req, res) => {
   const { date } = req.query;
   const base = date ? new Date(`${date}T09:00:00`) : new Date();
@@ -295,20 +291,19 @@ app.get('/api/slots', (req, res) => {
   res.json({ slots });
 });
 
-/* ---- In-memory dedupe for quick repeats ---- */
+/* ---- In-memory dedupe ---- */
 const DEDUP_SECONDS = Number(process.env.BOOKING_DEDUP_SECONDS || 120);
-const recentBookings = new Map(); // key -> expiresAt(ms)
+const recentBookings = new Map();
 setInterval(() => {
   const now = Date.now();
   for (const [k, t] of recentBookings) if (t <= now) recentBookings.delete(k);
 }, 30000);
 
-/* ---- Booking endpoint (used by form AND voice agent) ---- */
+/* ---- Booking endpoint ---- */
 app.post('/api/book', async (req, res) => {
   const b = req.body || {};
   const logTag = `[BOOK ${b?.source || 'web'}]`;
 
-  // Minimal, sanitized log so you can trace bookings in Render logs
   console.log(`${logTag} req:`, {
     fullName: b?.fullName, email: b?.email, date: b?.date, time: b?.time,
     timeZone: b?.timeZone, duration: b?.duration, source: b?.source
@@ -333,7 +328,6 @@ app.post('/api/book', async (req, res) => {
       return res.status(400).json({ ok:false, error:'Missing required fields: fullName, email, date, time.' });
     }
 
-    // De-dupe quick repeats
     const dedupKey = `${email}|${date}|${time}|${timeZone}`;
     const now = Date.now();
     if (recentBookings.get(dedupKey) > now) {
@@ -342,7 +336,6 @@ app.post('/api/book', async (req, res) => {
     }
     recentBookings.set(dedupKey, now + DEDUP_SECONDS * 1000);
 
-    // Store UTC times for analytics (if DB enabled)
     const startISO = zonedToUtcISO(date, time, timeZone);
     const endISO   = startISO ? new Date(new Date(startISO).getTime() + duration * 60000).toISOString() : null;
 
@@ -359,11 +352,9 @@ app.post('/api/book', async (req, res) => {
       } catch (e) { console.warn(`${logTag} db insert failed:`, e?.message); }
     }
 
-    // Emails
     const emailStatus = { sales:false, user:false };
     if (transporter) {
       try {
-        // ICS built with local wall-time + TZID
         const startLocal = buildLocalIso(date, time, 0);
         const endLocal   = buildLocalIso(date, time, duration);
         const ics = icsInvite({
@@ -402,8 +393,6 @@ A calendar invite is attached. If you need to change anything, just reply to thi
 — Team ${BRAND}`,
           html,
           attachments: [{ filename:'invite.ics', content: ics, contentType:'text/calendar; charset=utf-8; method=REQUEST' }],
-
-          // Step-1 Option A: archive + tag
           bcc: ARCHIVE_BCC || undefined,
           headers: { 'X-Mailgun-Tag': MAILGUN_TAG }
         });
@@ -431,8 +420,6 @@ Length:  ${duration} minutes
 Notes:
 ${(notes || '-')}
 `,
-
-          // Step-1 Option A: archive + tag
           bcc: ARCHIVE_BCC || undefined,
           headers: { 'X-Mailgun-Tag': MAILGUN_TAG }
         });
@@ -449,41 +436,16 @@ ${(notes || '-')}
     res.status(500).json({ ok:false, error:'Server error' });
   }
 });
-// --- Manual reply endpoint (secure with a token) ---
-app.post('/api/manual-email', async (req, res) => {
-  try {
-    const token = req.headers['x-admin-token'] || req.query.token;
-    if (process.env.ADMIN_TOKEN && token !== process.env.ADMIN_TOKEN) {
-      return res.status(401).json({ ok:false, error:'unauthorized' });
-    }
-    if (!transporter) return res.status(500).json({ ok:false, error:'smtp_disabled' });
-
-    const { to, subject, html, text } = req.body || {};
-    if (!to || !subject || (!html && !text)) {
-      return res.status(400).json({ ok:false, error:'to, subject, and html or text are required' });
-    }
-
-    const info = await transporter.sendMail({
-      from: FROM_EMAIL,                    // Agentlyne <info@agentlyne.com>
-      to,
-      subject,
-      html,
-      text,
-      replyTo: process.env.SUPPORT_EMAIL || FROM_ADDR,
-      bcc: (process.env.BCC_ARCHIVE || '').trim() || undefined,
-      headers: { 'X-Mailgun-Tag': (process.env.MAILGUN_TAG || 'manual-reply') }
-    });
-
-    res.json({ ok:true, id: info.messageId });
-  } catch (e) {
-    console.error('manual-email error:', e);
-    res.status(500).json({ ok:false, error:'send_failed' });
-  }
-});
 
 /* ------------------------------------------------------------------ */
-/* OpenAI Realtime: mint ephemeral client session (with booking proto) */
+/* OpenAI Realtime: mint ephemeral client session                      */
 /* ------------------------------------------------------------------ */
+async function getFetch() {
+  if (globalThis.fetch) return globalThis.fetch;
+  const mod = await import('node-fetch');
+  return mod.default || mod;
+}
+
 app.post('/api/openai/realtime-session', async (req, res) => {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -545,15 +507,15 @@ Do not add any other text on that line.
   }
 });
 
-/* --- Bootstrap --- */
+/* ------------------------------------------------------------------ */
+/* Bootstrap                                                           */
+/* ------------------------------------------------------------------ */
 async function bootstrap() {
   await initDbPool();
   await ensureSchema();
-
   const PORT = process.env.PORT || 10000;
   app.listen(PORT, () => console.log(`API listening on :${PORT}`));
 }
-
 bootstrap().catch(err => {
   console.error('Fatal bootstrap error:', err);
   process.exit(1);
