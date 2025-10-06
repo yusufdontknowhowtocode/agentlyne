@@ -8,7 +8,6 @@
     if (i === -1) return null;
     const j = text.indexOf('{', i);
     if (j === -1) return null;
-    // try to grab the last } in the chunk
     const k = text.lastIndexOf('}');
     if (k === -1 || k < j) return null;
     try { return JSON.parse(text.slice(j, k + 1)); } catch { return null; }
@@ -45,7 +44,7 @@
     try {
       await postBooking(payload);
 
-      // Tell the model it worked (so she speaks it)
+      // Let the model know it worked
       window.oaiRTCPeer?.dc?.send(JSON.stringify({
         type: 'response.create',
         response: {
@@ -70,6 +69,9 @@
   window.AGENT_BOOKING = { onAssistantText };
 })();
 
+/* -------------------------------
+   ElevenLabs TTS demo (button)
+-------------------------------- */
 async function playTTS(text, opts = {}) {
   const r = await fetch('/api/elevenlabs/tts', {
     method: 'POST',
@@ -80,10 +82,12 @@ async function playTTS(text, opts = {}) {
       modelId: opts.modelId    // optional override
     })
   });
+
   if (!r.ok) {
     console.error('TTS failed', await r.text().catch(() => r.statusText));
     return;
   }
+
   const blob = await r.blob();
   const url = URL.createObjectURL(blob);
   const audio = new Audio(url);
@@ -91,7 +95,18 @@ async function playTTS(text, opts = {}) {
   audio.addEventListener('ended', () => URL.revokeObjectURL(url));
 }
 
-// Hook up the hero button
-document.getElementById('demo-tts')?.addEventListener('click', () => {
-  playTTS("Hi! I'm your Agentlyne voice agent. Ask me anything or book a call—I'll handle it.");
-});
+// Replace any existing handler so this button uses ElevenLabs only
+const demoBtn = document.getElementById('demo-tts');
+if (demoBtn) {
+  demoBtn.onclick = (e) => {
+    e?.preventDefault?.();
+    const voiceId = demoBtn.getAttribute('data-voice-id') || undefined; // optional per-button voice
+    playTTS(
+      "Hi! I'm your Agentlyne voice agent. Ask me anything or book a call—I'll handle it.",
+      { voiceId }
+    );
+  };
+}
+
+// Optional: expose for console testing
+window.playTTS = playTTS;
