@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
   <title>Agentlyne — Innovative AI Solutions</title>
   <meta name="description" content="Agentlyne answers calls, qualifies leads, and can run outbound campaigns automatically." />
   <meta name="theme-color" content="#0B1220" />
   <meta name="color-scheme" content="dark light" />
   <link rel="canonical" href="https://agentlyne.com/" />
 
-  <meta name="google-site-verification" content="google-site-verification=G1i082uaITtZMoQ1NMQCpB-Od4IjOrk--r2xacCFvKs" />
+  <!-- Favicons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=7">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=7" sizes="180x180">
 
   <!-- Open Graph / Twitter -->
   <meta property="og:type" content="website">
@@ -22,18 +23,6 @@
   <meta name="twitter:title" content="Agentlyne — Innovative AI Solutions">
   <meta name="twitter:description" content="Answer every call. Book more appointments with voice AI.">
   <meta name="twitter:image" content="https://agentlyne.com/apple-touch-icon.png">
-
-  <!-- Favicons -->
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=7">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=7" sizes="180x180">
-
-  <!-- Structured data -->
-  <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"WebSite","name":"Agentlyne","alternateName":"Agentlyne","url":"https://agentlyne.com/"}
-  </script>
-  <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"Organization","name":"Agentlyne","url":"https://agentlyne.com/","logo":"https://agentlyne.com/apple-touch-icon.png","sameAs":[]}
-  </script>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -47,17 +36,14 @@
       theme: {
         extend: {
           fontFamily: {
-            sans: ['Manrope', 'ui-sans-serif', 'system-ui'],
-            display: ['Space Grotesk', 'Manrope', 'ui-sans-serif', 'system-ui']
+            sans: ['Manrope','ui-sans-serif','system-ui'],
+            display: ['Space Grotesk','Manrope','ui-sans-serif','system-ui']
           },
           colors: { brand: { 500:'#0ea5e9', 600:'#0284c7' } }
         }
       }
     }
   </script>
-
-  <!-- Booking helper -->
-  <script src="/agent-booking.js"></script>
 
   <!-- Runtime config + CSS -->
   <script src="/config.js"></script>
@@ -115,7 +101,8 @@
             Our voice AI greets callers, qualifies leads, and schedules on your calendar—so revenue doesn't slip through the cracks.
           </p>
           <div class="mt-6 flex gap-3 items-center">
-            <a id="live-demo" href="#" class="btn btn-primary" data-live-demo>Try the Live Demo</a>
+            <!-- The demo button: we add a default ElevenLabs voice via data-voice-id -->
+            <a id="live-demo" href="#" class="btn btn-primary" data-voice-id="21m00Tcm4TlvDq8ikWAM">Try the Live Demo</a>
             <a href="pricing.html" class="btn btn-outline">See Pricing</a>
           </div>
         </div>
@@ -128,21 +115,18 @@
             <img src="bean.png" alt="Riley — Support Agent" loading="eager" />
             <div class="name-badge" aria-hidden="true">Riley — Support Agent</div>
           </div>
-
           <div class="card active" data-name="Julia — Receptionist Agent">
             <img src="white.png" alt="Julia — Receptionist Agent" />
             <div class="name-badge" aria-hidden="true">Julia — Receptionist Agent</div>
           </div>
-
           <div class="card next" data-name="Hana — Sales Agent">
             <img src="asian.png" alt="Hana — Sales Agent" />
             <div class="name-badge" aria-hidden="true">Hana — Sales Agent</div>
           </div>
         </div>
 
-        <!-- Single fixed badge + controls -->
+        <!-- Fixed badge + controls -->
         <div id="hero-badge" class="name-badge" aria-live="polite">Julia — Receptionist Agent</div>
-
         <div class="bottom-controls" aria-label="Carousel controls">
           <button type="button" class="arrow" id="prevBtn" aria-label="Previous slide">‹</button>
           <div class="nav-dots" role="tablist" aria-label="Slide selector">
@@ -173,7 +157,6 @@
             <p>People reach out when they’re ready. If they hit a queue or voicemail, most never try again. We pick up instantly and keep them engaged.</p>
             <span class="angle-dots"></span>
           </article>
-
           <article class="problem-card card-accent">
             <div class="problem-icon">📅</div>
             <h3>Scheduling without the back-and-forth</h3>
@@ -186,7 +169,6 @@
             </a>
             <span class="angle-dots"></span>
           </article>
-
           <article class="problem-card">
             <div class="problem-icon">🛡️</div>
             <h3>Consistent experience, 24/7</h3>
@@ -299,7 +281,7 @@
     </div>
   </footer>
 
-  <!-- Utility Scripts: year, carousel, background -->
+  <!-- Utility scripts: year, carousel, background -->
   <script>
     // Year
     const yEl = document.getElementById('y');
@@ -309,7 +291,7 @@
     const cards = Array.from(document.querySelectorAll('.card'));
     const dots  = Array.from(document.querySelectorAll('.dot'));
     const heroBadge = document.getElementById('hero-badge');
-    let currentIndex = 1; // center
+    let currentIndex = 1;
     let isAnimating = false;
 
     function setParallax(){
@@ -317,7 +299,7 @@
       const shift = (1 - currentIndex) * unit;
       document.documentElement.style.setProperty('--bg-shift',  `${shift}px`);
       document.documentElement.style.setProperty('--orb-shift', `${shift * 0.65}px`);
-      document.documentElement.style.setProperty('--fg-shift',  `${shift * 0.20}px`); // used by .carousel-track only
+      document.documentElement.style.setProperty('--fg-shift',  `${shift * 0.20}px`);
     }
     function updateDots(){
       dots.forEach((d,i)=>{
@@ -349,7 +331,7 @@
       updateDots();
       updateBadge();
       setParallax();
-      setTimeout(()=>{ isAnimating = false; }, 560); // matches CSS timing
+      setTimeout(()=>{ isAnimating = false; }, 560);
     }
     function nextSlide(){ updateCarousel((currentIndex+1) % cards.length); }
     function prevSlide(){ updateCarousel((currentIndex-1 + cards.length) % cards.length); }
@@ -360,7 +342,6 @@
     dots.forEach(d=> d.addEventListener('click', ()=> updateCarousel(+d.dataset.go)));
     cards.forEach((card,idx)=> card.addEventListener('click', ()=>{ if(!card.classList.contains('active')) updateCarousel(idx); }));
 
-    // init
     layout(currentIndex); updateDots(); updateBadge(); setParallax();
     window.addEventListener('resize', setParallax);
 
@@ -396,7 +377,7 @@
     })();
   </script>
 
-  <!-- Voice Demo Modal (OpenAI Realtime) -->
+  <!-- Voice Demo Modal -->
   <div id="voice-modal" class="retell-modal" role="dialog" aria-modal="true" aria-label="Live demo">
     <div class="retell-card">
       <button id="voice-close" class="retell-close" aria-label="Close">×</button>
@@ -408,28 +389,49 @@
     </div>
   </div>
 
+  <!-- Booking + TTS helper (must be before we bind the click) -->
+  <script src="/agent-booking.js"></script>
+
   <!-- OpenAI Realtime client -->
   <script src="/sdk/openai-realtime.v1.js?v=2"></script>
   <script>
     const voiceModal = document.getElementById('voice-modal');
     const voiceClose = document.getElementById('voice-close');
     const demoBtn    = document.getElementById('live-demo');
-    const LOCKED_VOICE = 'coral';
+    const DEFAULT_ELEVEN_VOICE = demoBtn?.getAttribute('data-voice-id') || '21m00Tcm4TlvDq8ikWAM';
+    const LOCKED_VOICE = 'coral'; // OpenAI realtime voice id
 
     function showModal() {
       voiceModal.style.display = 'flex';
       document.body.classList.add('modal-open');
     }
     function hideModal() {
-      try { OpenAIRealtime.stop(); } catch {}
+      try { OpenAIRealtime?.stop?.(); } catch {}
       voiceModal.style.display = 'none';
       document.body.classList.remove('modal-open');
     }
     voiceClose?.addEventListener('click', hideModal);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideModal(); });
 
     async function startVoiceDemo() {
       try {
+        // quick ElevenLabs greeting so users hear something immediately
+        if (typeof window.playTTS === 'function') {
+          window.playTTS("Hi! I'm your Agentlyne voice agent. Ask me anything or book a call—I'll handle it.", {
+            voiceId: DEFAULT_ELEVEN_VOICE
+          });
+        }
+
+        // mic permission
         await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        // OpenAI realtime (if SDK loaded)
+        if (typeof OpenAIRealtime?.start !== 'function') {
+          console.warn('[voice-demo] OpenAIRealtime SDK not available');
+          alert('Live voice is unavailable right now, but the audio greeting is working.');
+          return;
+        }
+
         showModal();
         await OpenAIRealtime.start({
           voice: LOCKED_VOICE,
@@ -439,6 +441,13 @@
             "Avoid robotic phrasing or meta talk; sound like a person helping."
           ].join(' ')
         });
+
+        // If our booking hook is present, let the SDK call it on assistant messages
+        try {
+          if (window.AGENT_BOOKING?.onAssistantText && typeof OpenAIRealtime.onText === 'function') {
+            OpenAIRealtime.onText(window.AGENT_BOOKING.onAssistantText);
+          }
+        } catch {}
       } catch (err) {
         console.error('[voice-demo]', err);
         alert('Could not start the live demo:\n' + (err.message || err));
@@ -446,8 +455,10 @@
       }
     }
 
-    demoBtn?.addEventListener('click', (e) => { e.preventDefault(); startVoiceDemo(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideModal(); });
+    demoBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      startVoiceDemo();
+    });
   </script>
 </body>
 </html>
