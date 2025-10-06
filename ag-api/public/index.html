@@ -24,32 +24,15 @@
   <meta name="twitter:image" content="https://agentlyne.com/apple-touch-icon.png">
 
   <!-- Favicons -->
-  <!-- Favicons (SVG preferred; add small cache-busters) -->
-  <!-- Favicons (SVG first, minimal fallbacks) -->
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=7">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=7" sizes="180x180">
 
-
-
-  <!-- Structured data (helps Google pick up favicon & sitename) -->
+  <!-- Structured data -->
   <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    "name": "Agentlyne",
-    "alternateName": "Agentlyne",
-    "url": "https://agentlyne.com/"
-  }
+  {"@context":"https://schema.org","@type":"WebSite","name":"Agentlyne","alternateName":"Agentlyne","url":"https://agentlyne.com/"}
   </script>
   <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    "name": "Agentlyne",
-    "url": "https://agentlyne.com/",
-    "logo": "https://agentlyne.com/apple-touch-icon.png",
-    "sameAs": []
-  }
+  {"@context":"https://schema.org","@type":"Organization","name":"Agentlyne","url":"https://agentlyne.com/","logo":"https://agentlyne.com/apple-touch-icon.png","sameAs":[]}
   </script>
 
   <!-- Fonts -->
@@ -140,7 +123,7 @@
 
       <!-- Avatar Carousel -->
       <div class="stage" id="stage" aria-label="Agent avatars carousel">
-        <div class="carousel-track">
+        <div class="carousel-track" id="carousel-track">
           <div class="card prev" data-name="Riley — Support Agent">
             <img src="bean.png" alt="Riley — Support Agent" loading="eager" />
             <div class="name-badge" aria-hidden="true">Riley — Support Agent</div>
@@ -157,7 +140,9 @@
           </div>
         </div>
 
-        <!-- Bottom-center controls -->
+        <!-- Single fixed badge + controls -->
+        <div id="hero-badge" class="name-badge" aria-live="polite">Julia — Receptionist Agent</div>
+
         <div class="bottom-controls" aria-label="Carousel controls">
           <button type="button" class="arrow" id="prevBtn" aria-label="Previous slide">‹</button>
           <div class="nav-dots" role="tablist" aria-label="Slide selector">
@@ -323,6 +308,7 @@
     // ----- Carousel -----
     const cards = Array.from(document.querySelectorAll('.card'));
     const dots  = Array.from(document.querySelectorAll('.dot'));
+    const heroBadge = document.getElementById('hero-badge');
     let currentIndex = 1; // center
     let isAnimating = false;
 
@@ -331,7 +317,7 @@
       const shift = (1 - currentIndex) * unit;
       document.documentElement.style.setProperty('--bg-shift',  `${shift}px`);
       document.documentElement.style.setProperty('--orb-shift', `${shift * 0.65}px`);
-      document.documentElement.style.setProperty('--fg-shift',  `${shift * 0.20}px`);
+      document.documentElement.style.setProperty('--fg-shift',  `${shift * 0.20}px`); // used by .carousel-track only
     }
     function updateDots(){
       dots.forEach((d,i)=>{
@@ -339,6 +325,11 @@
         d.classList.toggle('active', on);
         d.setAttribute('aria-selected', on ? 'true' : 'false');
       });
+    }
+    function updateBadge(){
+      if (heroBadge && cards[currentIndex]) {
+        heroBadge.textContent = cards[currentIndex].dataset.name || '';
+      }
     }
     function layout(index){
       cards.forEach((card,i)=>{
@@ -356,8 +347,9 @@
       currentIndex = index;
       layout(currentIndex);
       updateDots();
+      updateBadge();
       setParallax();
-      setTimeout(()=>{ isAnimating = false; }, 900);
+      setTimeout(()=>{ isAnimating = false; }, 560); // matches CSS timing
     }
     function nextSlide(){ updateCarousel((currentIndex+1) % cards.length); }
     function prevSlide(){ updateCarousel((currentIndex-1 + cards.length) % cards.length); }
@@ -367,7 +359,10 @@
     document.addEventListener('keydown', (e)=>{ if (e.key==='ArrowRight') nextSlide(); if (e.key==='ArrowLeft') prevSlide(); });
     dots.forEach(d=> d.addEventListener('click', ()=> updateCarousel(+d.dataset.go)));
     cards.forEach((card,idx)=> card.addEventListener('click', ()=>{ if(!card.classList.contains('active')) updateCarousel(idx); }));
-    layout(currentIndex); updateDots(); setParallax(); window.addEventListener('resize', setParallax);
+
+    // init
+    layout(currentIndex); updateDots(); updateBadge(); setParallax();
+    window.addEventListener('resize', setParallax);
 
     // Subtle background (stars)
     (function(){

@@ -438,7 +438,7 @@ ${(notes || '-')}
 });
 
 /* ------------------------------------------------------------------ */
-/* OpenAI Realtime: mint ephemeral client session                      */
+/* ElevenLabs TTS proxy (streaming MP3)                                */
 /* ------------------------------------------------------------------ */
 async function getFetch() {
   if (globalThis.fetch) return globalThis.fetch;
@@ -446,6 +446,54 @@ async function getFetch() {
   return mod.default || mod;
 }
 
+app.post('/api/elevenlabs/tts', async (req, res) => {
+  try {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'missing_elevenlabs_key' });
+
+    const {
+      text,
+      voiceId = process.env.ELEVENLABS_VOICE || '21m00Tcm4TlvDq8ikWAM', // Rachel
+      modelId = 'eleven_multilingual_v2'
+    } = req.body || {};
+
+    if (!text || !String(text).trim()) {
+      return res.status(400).json({ error: 'missing_text' });
+    }
+
+    const httpFetch = await getFetch();
+    const r = await httpFetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'audio/mpeg'
+      },
+      body: JSON.stringify({
+        text,
+        model_id: modelId,
+        voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.3, use_speaker_boost: true },
+        optimize_streaming_latency: 1
+      })
+    });
+
+    if (!r.ok) {
+      const err = await r.text().catch(() => '');
+      return res.status(r.status).type('text/plain').send(err || 'TTS error');
+    }
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'no-store');
+    r.body.pipe(res);
+  } catch (e) {
+    console.error('elevenlabs tts error', e);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* OpenAI Realtime: mint ephemeral client session                      */
+/* ------------------------------------------------------------------ */
 app.post('/api/openai/realtime-session', async (req, res) => {
   try {
     const apiKey = process.env.OPENAI_API_KEY;

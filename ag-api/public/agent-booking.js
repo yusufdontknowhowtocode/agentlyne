@@ -69,3 +69,29 @@
   // Expose a single hook the SDK can call whenever assistant text arrives
   window.AGENT_BOOKING = { onAssistantText };
 })();
+
+async function playTTS(text, opts = {}) {
+  const r = await fetch('/api/elevenlabs/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text,
+      voiceId: opts.voiceId,   // optional override
+      modelId: opts.modelId    // optional override
+    })
+  });
+  if (!r.ok) {
+    console.error('TTS failed', await r.text().catch(() => r.statusText));
+    return;
+  }
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  audio.play().catch(console.warn);
+  audio.addEventListener('ended', () => URL.revokeObjectURL(url));
+}
+
+// Hook up the hero button
+document.getElementById('demo-tts')?.addEventListener('click', () => {
+  playTTS("Hi! I'm your Agentlyne voice agent. Ask me anything or book a call—I'll handle it.");
+});
