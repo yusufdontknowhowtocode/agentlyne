@@ -377,7 +377,7 @@
     })();
   </script>
 
-  <!-- Voice Demo Modal -->
+    <!-- Voice Demo Modal -->
   <div id="voice-modal" class="retell-modal" role="dialog" aria-modal="true" aria-label="Live demo">
     <div class="retell-card">
       <button id="voice-close" class="retell-close" aria-label="Close">×</button>
@@ -389,24 +389,29 @@
     </div>
   </div>
 
-  <!-- Booking + TTS helper (must be before we bind the click) -->
+  <!-- Booking + TTS helper -->
   <script src="/agent-booking.js"></script>
 
   <!-- OpenAI Realtime client -->
   <script src="/sdk/openai-realtime.v1.js?v=2"></script>
+
+  <!-- Bind the demo button (isolated scope, no globals) -->
   <script>
+  (() => {
     const voiceModal = document.getElementById('voice-modal');
     const voiceClose = document.getElementById('voice-close');
-    const demoBtn    = document.getElementById('live-demo');
-    const DEFAULT_ELEVEN_VOICE = demoBtn?.getAttribute('data-voice-id') || '21m00Tcm4TlvDq8ikWAM';
+    const demoBtnEl  = document.getElementById('live-demo'); // renamed from demoBtn
+    const DEFAULT_ELEVEN_VOICE = demoBtnEl?.getAttribute('data-voice-id') || '21m00Tcm4TlvDq8ikWAM';
     const LOCKED_VOICE = 'coral'; // OpenAI realtime voice id
+
+    const log = (...a) => console.log('[live-demo]', ...a);
 
     function showModal() {
       voiceModal.style.display = 'flex';
       document.body.classList.add('modal-open');
     }
     function hideModal() {
-      try { OpenAIRealtime?.stop?.(); } catch {}
+      try { window.OpenAIRealtime?.stop?.(); } catch {}
       voiceModal.style.display = 'none';
       document.body.classList.remove('modal-open');
     }
@@ -415,25 +420,32 @@
 
     async function startVoiceDemo() {
       try {
-        // quick ElevenLabs greeting so users hear something immediately
+        log('clicked');
+
+        // 1) Immediate audio feedback via ElevenLabs (if endpoint + helper exist)
         if (typeof window.playTTS === 'function') {
+          log('playing ElevenLabs greeting…');
           window.playTTS("Hi! I'm your Agentlyne voice agent. Ask me anything or book a call—I'll handle it.", {
             voiceId: DEFAULT_ELEVEN_VOICE
           });
+        } else {
+          console.warn('[live-demo] playTTS() not found. Is /agent-booking.js updated & loaded?');
         }
 
-        // mic permission
+        // 2) Mic permission (required before WebRTC)
         await navigator.mediaDevices.getUserMedia({ audio: true });
+        log('mic granted');
 
-        // OpenAI realtime (if SDK loaded)
-        if (typeof OpenAIRealtime?.start !== 'function') {
-          console.warn('[voice-demo] OpenAIRealtime SDK not available');
-          alert('Live voice is unavailable right now, but the audio greeting is working.');
+        // 3) OpenAI realtime (only if SDK present)
+        if (typeof window.OpenAIRealtime?.start !== 'function') {
+          console.warn('[live-demo] OpenAIRealtime SDK not available (check /sdk/openai-realtime.v1.js)');
+          alert('Live voice is temporarily unavailable, but the audio greeting should have played.');
           return;
         }
 
         showModal();
-        await OpenAIRealtime.start({
+        log('starting OpenAIRealtime…');
+        await window.OpenAIRealtime.start({
           voice: LOCKED_VOICE,
           instructions: [
             "You are an Agentlyne receptionist with a calm, friendly, human tone.",
@@ -442,23 +454,24 @@
           ].join(' ')
         });
 
-        // If our booking hook is present, let the SDK call it on assistant messages
+        // 4) If our booking hook is present, tie it in
         try {
-          if (window.AGENT_BOOKING?.onAssistantText && typeof OpenAIRealtime.onText === 'function') {
-            OpenAIRealtime.onText(window.AGENT_BOOKING.onAssistantText);
+          if (window.AGENT_BOOKING?.onAssistantText && typeof window.OpenAIRealtime.onText === 'function') {
+            window.OpenAIRealtime.onText(window.AGENT_BOOKING.onAssistantText);
+            log('booking hook attached');
           }
-        } catch {}
+        } catch (e) { console.warn('[live-demo] attach hook failed', e); }
       } catch (err) {
-        console.error('[voice-demo]', err);
+        console.error('[live-demo] failed to start', err);
         alert('Could not start the live demo:\n' + (err.message || err));
         hideModal();
       }
     }
 
-    demoBtn?.addEventListener('click', (e) => {
+    demoBtnEl?.addEventListener('click', (e) => {
       e.preventDefault();
       startVoiceDemo();
     });
+  })();
   </script>
-</body>
-</html>
+

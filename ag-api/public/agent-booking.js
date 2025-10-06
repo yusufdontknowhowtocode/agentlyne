@@ -69,44 +69,25 @@
   window.AGENT_BOOKING = { onAssistantText };
 })();
 
-/* -------------------------------
-   ElevenLabs TTS demo (button)
--------------------------------- */
+// Quick ElevenLabs TTS helper (global)
 async function playTTS(text, opts = {}) {
-  const r = await fetch('/api/elevenlabs/tts', {
+  const r = await fetch('/api/elevenlabs/tts', {   // <-- fetch (not faetch)
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       text,
-      voiceId: opts.voiceId,   // optional override
-      modelId: opts.modelId    // optional override
+      voiceId: opts.voiceId,
+      modelId: opts.modelId
     })
   });
-
   if (!r.ok) {
     console.error('TTS failed', await r.text().catch(() => r.statusText));
     return;
   }
-
   const blob = await r.blob();
   const url = URL.createObjectURL(blob);
   const audio = new Audio(url);
   audio.play().catch(console.warn);
   audio.addEventListener('ended', () => URL.revokeObjectURL(url));
 }
-
-// Replace any existing handler so this button uses ElevenLabs only
-const demoBtn = document.getElementById('demo-tts');
-if (demoBtn) {
-  demoBtn.onclick = (e) => {
-    e?.preventDefault?.();
-    const voiceId = demoBtn.getAttribute('data-voice-id') || undefined; // optional per-button voice
-    playTTS(
-      "Hi! I'm your Agentlyne voice agent. Ask me anything or book a call—I'll handle it.",
-      { voiceId }
-    );
-  };
-}
-
-// Optional: expose for console testing
 window.playTTS = playTTS;
