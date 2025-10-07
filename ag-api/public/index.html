@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=7">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=7" sizes="180x180">
 
-  <!-- Open Graph / Twitter -->
+  <!-- OG/Twitter -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="Agentlyne — Innovative AI Solutions">
   <meta property="og:description" content="Answer every call. Book more appointments with voice AI.">
@@ -29,7 +29,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 
-  <!-- Tailwind -->
+  <!-- Tailwind (dev CDN is fine for now) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -49,7 +49,7 @@
   <script src="/config.js"></script>
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Small tweaks -->
+  <!-- Minor UI tweaks -->
   <style>
     :root{ --btn-h:44px; } @media (min-width:640px){ :root{ --btn-h:48px; } }
     .btn{display:inline-flex;align-items:center;justify-content:center;padding:.625rem 1rem;height:var(--btn-h);min-width:44px;border-radius:9999px;border:1px solid transparent;font-weight:600;line-height:1;white-space:nowrap}
@@ -101,7 +101,7 @@
             Our voice AI greets callers, qualifies leads, and schedules on your calendar—so revenue doesn't slip through the cracks.
           </p>
           <div class="mt-6 flex gap-3 items-center">
-            <!-- The demo button: we add a default ElevenLabs voice via data-voice-id -->
+            <!-- Default ElevenLabs voice for the greeting; change to your voice ID -->
             <a id="live-demo" href="#" class="btn btn-primary" data-voice-id="21m00Tcm4TlvDq8ikWAM">Try the Live Demo</a>
             <a href="pricing.html" class="btn btn-outline">See Pricing</a>
           </div>
@@ -291,8 +291,7 @@
     const cards = Array.from(document.querySelectorAll('.card'));
     const dots  = Array.from(document.querySelectorAll('.dot'));
     const heroBadge = document.getElementById('hero-badge');
-    let currentIndex = 1;
-    let isAnimating = false;
+    let currentIndex = 1, isAnimating = false;
 
     function setParallax(){
       const unit  = Math.min(window.innerWidth, 1600) * 0.13;
@@ -301,18 +300,8 @@
       document.documentElement.style.setProperty('--orb-shift', `${shift * 0.65}px`);
       document.documentElement.style.setProperty('--fg-shift',  `${shift * 0.20}px`);
     }
-    function updateDots(){
-      dots.forEach((d,i)=>{
-        const on = i===currentIndex;
-        d.classList.toggle('active', on);
-        d.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
-    }
-    function updateBadge(){
-      if (heroBadge && cards[currentIndex]) {
-        heroBadge.textContent = cards[currentIndex].dataset.name || '';
-      }
-    }
+    function updateDots(){ dots.forEach((d,i)=>{ const on=i===currentIndex; d.classList.toggle('active', on); d.setAttribute('aria-selected', on ? 'true' : 'false'); }); }
+    function updateBadge(){ if (heroBadge && cards[currentIndex]) heroBadge.textContent = cards[currentIndex].dataset.name || ''; }
     function layout(index){
       cards.forEach((card,i)=>{
         card.classList.remove('active','prev','next','hidden');
@@ -327,10 +316,7 @@
       if (isAnimating) return;
       isAnimating = true;
       currentIndex = index;
-      layout(currentIndex);
-      updateDots();
-      updateBadge();
-      setParallax();
+      layout(currentIndex); updateDots(); updateBadge(); setParallax();
       setTimeout(()=>{ isAnimating = false; }, 560);
     }
     function nextSlide(){ updateCarousel((currentIndex+1) % cards.length); }
@@ -345,39 +331,24 @@
     layout(currentIndex); updateDots(); updateBadge(); setParallax();
     window.addEventListener('resize', setParallax);
 
-    // Subtle background (stars)
+    // Subtle starfield
     (function(){
-      const c = document.getElementById('bgCanvas');
-      if (!c) return;
+      const c = document.getElementById('bgCanvas'); if (!c) return;
       const ctx = c.getContext('2d', {alpha:true});
-      let dpr = Math.max(1, window.devicePixelRatio||1);
-      let W, H; const particles = [];
-      function resize(){
-        W = c.width  = Math.floor(innerWidth * dpr);
-        H = c.height = Math.floor(innerHeight * dpr);
-        c.style.width  = innerWidth + 'px';
-        c.style.height = innerHeight + 'px';
-      }
+      let dpr = Math.max(1, window.devicePixelRatio||1), W, H; const particles = [];
+      function resize(){ W=c.width=Math.floor(innerWidth*dpr); H=c.height=Math.floor(innerHeight*dpr); c.style.width=innerWidth+'px'; c.style.height=innerHeight+'px'; }
       resize(); addEventListener('resize', resize);
-      for (let i=0;i<50;i++){
-        particles.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.2,vy:(Math.random()-.5)*.2,r:Math.random()*2+1,o:Math.random()*.5+.1});
-      }
+      for (let i=0;i<50;i++){ particles.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.2,vy:(Math.random()-.5)*.2,r:Math.random()*2+1,o:Math.random()*.5+.1}); }
       (function loop(){
         ctx.clearRect(0,0,W,H);
-        particles.forEach(p=>{
-          p.x+=p.vx; p.y+=p.vy;
-          if(p.x<0)p.x=W; if(p.x>W)p.x=0;
-          if(p.y<0)p.y=H; if(p.y>H)p.y=0;
-          ctx.beginPath(); ctx.arc(p.x,p.y,p.r*dpr,0,Math.PI*2);
-          ctx.fillStyle = `rgba(142,202,230,${p.o})`;
-          ctx.fill();
-        });
+        particles.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; if(p.x<0)p.x=W; if(p.x>W)p.x=0; if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+          ctx.beginPath(); ctx.arc(p.x,p.y,p.r*dpr,0,Math.PI*2); ctx.fillStyle=`rgba(142,202,230,${p.o})`; ctx.fill();});
         requestAnimationFrame(loop);
       })();
     })();
   </script>
 
-    <!-- Voice Demo Modal -->
+  <!-- Voice Demo Modal -->
   <div id="voice-modal" class="retell-modal" role="dialog" aria-modal="true" aria-label="Live demo">
     <div class="retell-card">
       <button id="voice-close" class="retell-close" aria-label="Close">×</button>
@@ -389,78 +360,66 @@
     </div>
   </div>
 
-  <!-- Booking + TTS helper -->
+  <!-- Booking + ElevenLabs TTS helper -->
   <script src="/agent-booking.js"></script>
 
-  <!-- OpenAI Realtime client -->
+  <!-- OpenAI Realtime client (your SDK file) -->
   <script src="/sdk/openai-realtime.v1.js?v=2"></script>
 
-  <!-- Bind the demo button (isolated scope, no globals) -->
+  <!-- Bind the demo button (OpenAI text → ElevenLabs voice) -->
   <script>
   (() => {
     const voiceModal = document.getElementById('voice-modal');
     const voiceClose = document.getElementById('voice-close');
-    const demoBtnEl  = document.getElementById('live-demo'); // renamed from demoBtn
+    const demoBtnEl  = document.getElementById('live-demo');
     const DEFAULT_ELEVEN_VOICE = demoBtnEl?.getAttribute('data-voice-id') || '21m00Tcm4TlvDq8ikWAM';
-    const LOCKED_VOICE = 'coral'; // OpenAI realtime voice id
 
     const log = (...a) => console.log('[live-demo]', ...a);
 
-    function showModal() {
-      voiceModal.style.display = 'flex';
-      document.body.classList.add('modal-open');
-    }
-    function hideModal() {
-      try { window.OpenAIRealtime?.stop?.(); } catch {}
-      voiceModal.style.display = 'none';
-      document.body.classList.remove('modal-open');
-    }
+    function showModal(){ voiceModal.style.display='flex'; document.body.classList.add('modal-open'); }
+    function hideModal(){ try{ window.OpenAIRealtime?.stop?.(); }catch{} voiceModal.style.display='none'; document.body.classList.remove('modal-open'); }
     voiceClose?.addEventListener('click', hideModal);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideModal(); });
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') hideModal(); });
 
     async function startVoiceDemo() {
       try {
         log('clicked');
 
-        // 1) Immediate audio feedback via ElevenLabs (if endpoint + helper exist)
+        // Greeting via ElevenLabs so the very first voice is EL
         if (typeof window.playTTS === 'function') {
-          log('playing ElevenLabs greeting…');
           window.playTTS("Hi! I'm your Agentlyne voice agent. Ask me anything or book a call—I'll handle it.", {
             voiceId: DEFAULT_ELEVEN_VOICE
           });
-        } else {
-          console.warn('[live-demo] playTTS() not found. Is /agent-booking.js updated & loaded?');
         }
 
-        // 2) Mic permission (required before WebRTC)
+        // Mic permission for WebRTC
         await navigator.mediaDevices.getUserMedia({ audio: true });
-        log('mic granted');
+        showModal();
 
-        // 3) OpenAI realtime (only if SDK present)
         if (typeof window.OpenAIRealtime?.start !== 'function') {
-          console.warn('[live-demo] OpenAIRealtime SDK not available (check /sdk/openai-realtime.v1.js)');
-          alert('Live voice is temporarily unavailable, but the audio greeting should have played.');
+          alert('Live voice temporarily unavailable.');
           return;
         }
 
-        showModal();
-        log('starting OpenAIRealtime…');
+        // IMPORTANT: tell the SDK to *not* synthesize audio (voice=null / external TTS)
         await window.OpenAIRealtime.start({
-          voice: LOCKED_VOICE,
+          voice: null,                    // no OpenAI voice
+          outputAudio: false,             // hint for SDKs that support it
+          tts: 'external',                // custom hint (safe to ignore if unknown)
           instructions: [
             "You are an Agentlyne receptionist with a calm, friendly, human tone.",
-            "Keep replies short (1–2 sentences), use contractions, vary rhythm.",
-            "Avoid robotic phrasing or meta talk; sound like a person helping."
+            "Keep replies short (1–2 sentences). Use contractions and natural rhythm."
           ].join(' ')
         });
 
-        // 4) If our booking hook is present, tie it in
-        try {
-          if (window.AGENT_BOOKING?.onAssistantText && typeof window.OpenAIRealtime.onText === 'function') {
-            window.OpenAIRealtime.onText(window.AGENT_BOOKING.onAssistantText);
-            log('booking hook attached');
-          }
-        } catch (e) { console.warn('[live-demo] attach hook failed', e); }
+        // Route every assistant text to our booking+TTS pipe
+        if (typeof window.OpenAIRealtime.onText === 'function' && window.AGENT_BOOKING?.onAssistantText) {
+          window.OpenAIRealtime.onText((text) => {
+            // Speak via ElevenLabs + watch for <<BOOK>>
+            window.AGENT_BOOKING.onAssistantText(text);
+          });
+          log('text handler attached (EL voice active)');
+        }
       } catch (err) {
         console.error('[live-demo] failed to start', err);
         alert('Could not start the live demo:\n' + (err.message || err));
@@ -468,10 +427,8 @@
       }
     }
 
-    demoBtnEl?.addEventListener('click', (e) => {
-      e.preventDefault();
-      startVoiceDemo();
-    });
+    demoBtnEl?.addEventListener('click', (e)=>{ e.preventDefault(); startVoiceDemo(); });
   })();
   </script>
-
+</body>
+</html>

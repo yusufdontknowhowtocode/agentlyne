@@ -1,7 +1,9 @@
 // /public/agent-booking.js
+// Booking signal handler + ElevenLabs TTS helper (with a tiny queue)
 (function () {
   const tzLocal = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
+  /* ---------------------------- BOOKING SIGNAL ---------------------------- */
   function parseSignal(text) {
     const tag = '<<BOOK>>';
     const i = text.indexOf(tag);
@@ -25,69 +27,92 @@
   }
 
   async function onAssistantText(text) {
+    // 1) watch for booking signal
     const sig = parseSignal(text);
-    if (!sig) return;
+    if (sig) {
+      const payload = {
+        fullName: sig.fullName || sig.name,
+        email: sig.email,
+        phone: sig.phone || '',
+        company: sig.company || '',
+        date: sig.date,          // YYYY-MM-DD
+        time: sig.time,          // HH:mm (24h)
+        timeZone: sig.timeZone || tzLocal,
+        duration: sig.duration || 60,
+        source: 'voice-agent'
+      };
+      if (payload.fullName && payload.email && payload.date && payload.time) {
+        try {
+          await postBooking(payload);
+          // Tell the model it worked so it can respond (we’ll TTS that too)
+          window.oaiRTCPeer?.dc?.send(JSON.stringify({
+            type: 'response.create',
+            response: {
+              instructions:
+                `Perfect — I’ve booked ${payload.fullName} for ${payload.date} ${payload.time} ${payload.timeZone}. ` +
+                `I emailed a calendar invite and we’ll reply shortly with call details.`
+            }
+          }));
+        } catch (e) {
+          console.error('voice booking error:', e);
+          window.oaiRTCPeer?.dc?.send(JSON.stringify({
+            type: 'response.create',
+            response: {
+              instructions:
+                `I hit a booking error. We can try again now, or you can use the form on the site.`
+            }
+          }));
+        }
+      }
+    }
 
-    const payload = {
-      fullName: sig.fullName || sig.name,
-      email: sig.email,
-      phone: sig.phone || '',
-      company: sig.company || '',
-      date: sig.date,          // YYYY-MM-DD
-      time: sig.time,          // HH:mm (24h)
-      timeZone: sig.timeZone || tzLocal,
-      duration: sig.duration || 60,
-      source: 'voice-agent'
-    };
-    if (!payload.fullName || !payload.email || !payload.date || !payload.time) return;
+    // 2) speak whatever the assistant said (using ElevenLabs)
+    if (text && text.trim()) TTSQueue.enqueue(text.trim());
+  }
 
+  /* ---------------------------- ELEVENLABS TTS --------------------------- */
+  async function playTTS(text, opts = {}) {
+    const r = await fetch('/api/elevenlabs/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        voiceId: opts.voiceId,   // optional override
+        modelId: opts.modelId    // optional override
+      })
+    });
+    if (!r.ok) {
+      console.error('TTS failed', await r.text().catch(() => r.statusText));
+      return;
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
     try {
-      await postBooking(payload);
-
-      // Let the model know it worked
-      window.oaiRTCPeer?.dc?.send(JSON.stringify({
-        type: 'response.create',
-        response: {
-          instructions:
-            `Perfect — I’ve booked ${payload.fullName} for ${payload.date} ${payload.time} ${payload.timeZone}. ` +
-            `I emailed a calendar invite and we’ll reply shortly with call details.`
-        }
-      }));
-    } catch (e) {
-      console.error('voice booking error:', e);
-      window.oaiRTCPeer?.dc?.send(JSON.stringify({
-        type: 'response.create',
-        response: {
-          instructions:
-            `I hit a booking error. We can try again now, or you can use the form on the site.`
-        }
-      }));
+      await new Audio(url).play();
+    } catch (err) {
+      console.warn('Audio play error:', err);
+    } finally {
+      // release object URL after a short delay
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
     }
   }
 
-  // Expose a single hook the SDK can call whenever assistant text arrives
-  window.AGENT_BOOKING = { onAssistantText };
-})();
+  // Simple FIFO queue so clips don’t overlap
+  const TTSQueue = (() => {
+    let chain = Promise.resolve();
+    function enqueue(text, opts) {
+      chain = chain.then(() => playTTS(text, opts)).catch(() => {});
+      return chain;
+    }
+    return { enqueue };
+  })();
 
-// Quick ElevenLabs TTS helper (global)
-async function playTTS(text, opts = {}) {
-  const r = await fetch('/api/elevenlabs/tts', {   // <-- fetch (not faetch)
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      text,
-      voiceId: opts.voiceId,
-      modelId: opts.modelId
-    })
-  });
-  if (!r.ok) {
-    console.error('TTS failed', await r.text().catch(() => r.statusText));
-    return;
-  }
-  const blob = await r.blob();
-  const url = URL.createObjectURL(blob);
-  const audio = new Audio(url);
-  audio.play().catch(console.warn);
-  audio.addEventListener('ended', () => URL.revokeObjectURL(url));
-}
-window.playTTS = playTTS;
+  // Export hooks for the realtime SDK
+  window.AGENT_BOOKING = {
+    onAssistantText,     // call this for every assistant message
+    speak: (text, opts) => TTSQueue.enqueue(text, opts) // optional direct TTS
+  };
+
+  // Also expose a global helper (handy for a greeting button)
+  window.playTTS = (text, opts) => TTSQueue.enqueue(text, opts);
+})();

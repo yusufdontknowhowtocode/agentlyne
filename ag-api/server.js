@@ -438,7 +438,7 @@ ${(notes || '-')}
 });
 
 /* ------------------------------------------------------------------ */
-/* ElevenLabs TTS proxy (streaming MP3)                                */
+/* Shared fetch helper                                                 */
 /* ------------------------------------------------------------------ */
 async function getFetch() {
   if (globalThis.fetch) return globalThis.fetch;
@@ -446,6 +446,9 @@ async function getFetch() {
   return mod.default || mod;
 }
 
+/* ------------------------------------------------------------------ */
+/* ElevenLabs TTS proxy (streaming MP3)                                */
+/* ------------------------------------------------------------------ */
 app.post('/api/elevenlabs/tts', async (req, res) => {
   try {
     const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -454,7 +457,7 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
     const {
       text,
       voiceId = process.env.ELEVENLABS_VOICE || '21m00Tcm4TlvDq8ikWAM', // Rachel
-      modelId = 'eleven_multilingual_v2'
+      modelId = process.env.ELEVENLABS_TTS_MODEL_ID || 'eleven_multilingual_v2'
     } = req.body || {};
 
     if (!text || !String(text).trim()) {
@@ -499,7 +502,10 @@ app.post('/api/openai/realtime-session', async (req, res) => {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'Missing OPENAI_API_KEY' });
 
-    const voice = req.body?.voice || 'verse';
+    // IMPORTANT: Only include voice if client provides one. If null/undefined,
+    // we omit it so OpenAI does NOT synthesize audio (we'll use ElevenLabs).
+    const voiceProvided = (req.body && 'voice' in req.body);
+    const requestedVoice = voiceProvided ? req.body.voice : undefined;
 
     const BRAND = process.env.BRAND_NAME || 'Agentlyne';
     const HOURS = process.env.BUSINESS_HOURS || 'Mon–Fri 9am–5pm';
@@ -529,18 +535,20 @@ Do not add any other text on that line.
     const instructions = (req.body?.instructions ? `${req.body.instructions}\n` : '') + baseInstructions;
 
     const httpFetch = await getFetch();
+    const body = {
+      model: 'gpt-4o-realtime-preview',
+      modalities: ['text', 'audio'], // keep audio for low-latency ASR, but omit 'voice' to mute TTS
+      instructions
+    };
+    if (requestedVoice) body.voice = requestedVoice; // only add if explicitly provided
+
     const r = await httpFetch('https://api.openai.com/v1/realtime/sessions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: 'gpt-4o-realtime-preview',
-        voice,
-        modalities: ['text', 'audio'],
-        instructions
-      })
+      body: JSON.stringify(body)
     });
 
     const data = await r.json().catch(() => ({}));
